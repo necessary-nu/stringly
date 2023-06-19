@@ -1,7 +1,14 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, ops::Deref, path::Path};
 
 use calamine::{Reader, Xlsx};
 use heck::ToSnakeCase;
+
+pub mod flt;
+
+pub enum PathNode {
+    File(Vec<u8>),
+    Directory(BTreeMap<String, PathNode>),
+}
 
 #[derive(Debug)]
 pub struct StringMap {
@@ -45,7 +52,25 @@ pub struct StringData {
     pub meta: BTreeMap<String, String>,
 }
 
-pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<BTreeMap<String, Vec<StringMap>>> {
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct InputData(BTreeMap<String, Vec<StringMap>>);
+
+impl InputData {
+    pub fn into_inner(self) -> BTreeMap<String, Vec<StringMap>> {
+        self.0
+    }
+}
+
+impl Deref for InputData {
+    type Target = BTreeMap<String, Vec<StringMap>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
     let mut workbook: Xlsx<_> = calamine::open_workbook(xlsx_path)?;
     let sheets = workbook
         .worksheets()
@@ -121,10 +146,11 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<BTreeMap<String, Vec<Strin
                     .get(*col_idx)
                     .unwrap()
                     .as_string()
-                    .filter(|x| !x.trim().is_empty()) {
-                        Some(v) => v,
-                        None => continue,
-                    };
+                    .filter(|x| !x.trim().is_empty())
+                {
+                    Some(v) => v,
+                    None => continue,
+                };
 
                 if let Some(meta_key) = meta_key {
                     languages
@@ -155,5 +181,22 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<BTreeMap<String, Vec<Strin
         );
     }
 
-    Ok(projects)
+    Ok(InputData(projects))
+}
+
+pub fn write_path_tree(prefix: &Path, tree: BTreeMap<String, PathNode>) -> std::io::Result<()> {
+    for (k, v) in tree.into_iter() {
+        let path = prefix.join(&k);
+        match v {
+            PathNode::File(data) => {
+                std::fs::write(path, data)?;
+            }
+            PathNode::Directory(tree) => {
+                std::fs::create_dir_all(&path)?;
+                write_path_tree(&prefix.join(&k), tree)?;
+            }
+        }
+    }
+
+    Ok(())
 }
