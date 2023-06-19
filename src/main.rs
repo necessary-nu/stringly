@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{path::{PathBuf}, fmt::Display};
 
 use clap::{builder::PossibleValue, Parser, ValueEnum};
 use stringly::write_path_tree;
@@ -7,6 +7,15 @@ use stringly::write_path_tree;
 enum Target {
     Fluent,
     TypeScript,
+}
+
+impl Display for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Target::Fluent => "Fluent",
+            Target::TypeScript => "TypeScript",
+        })
+    }
 }
 
 impl ValueEnum for Target {
@@ -39,13 +48,22 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    eprintln!("Generating for target: {}", args.target);
 
     let x = stringly::parse_xlsx(&args.input_xlsx_path)?;
     std::fs::create_dir_all(&args.output_path)?;
 
-    let tree = match args.target {
+    let maybe_tree = match args.target {
         Target::Fluent => stringly::flt::generate(x),
         _ => return Ok(()),
+    };
+
+    let tree = match maybe_tree {
+        Ok(v) => v,
+        Err((_, mut errors)) => {
+            eprintln!("{:?}", errors);
+            return Err(errors.pop().unwrap().into());
+        }
     };
 
     write_path_tree(&args.output_path, tree)?;

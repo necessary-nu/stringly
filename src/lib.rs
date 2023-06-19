@@ -1,9 +1,11 @@
 use std::{collections::BTreeMap, ops::Deref, path::Path};
 
 use calamine::{Reader, Xlsx};
+use fluent_syntax::{parser::ParserError, ast::Resource};
 use heck::ToSnakeCase;
 
 pub mod flt;
+pub mod ts;
 
 pub enum PathNode {
     File(Vec<u8>),
@@ -16,33 +18,30 @@ pub struct StringMap {
     pub strings: BTreeMap<String, StringData>,
 }
 
-impl From<StringMap> for fluent_syntax::ast::Resource<String> {
-    fn from(value: StringMap) -> Self {
-        use fluent_syntax::ast;
+pub type ParseError = (Resource<std::string::String>, Vec<ParserError>);
 
-        let resources = value.strings.into_iter().map(|(key, value)| {
-            ast::Entry::Message(ast::Message {
-                id: ast::Identifier { name: key },
-                value: Some(ast::Pattern {
-                    elements: vec![ast::PatternElement::TextElement { value: value.base }],
-                }),
-                attributes: value
-                    .meta
-                    .into_iter()
-                    .map(|(key, value)| ast::Attribute {
-                        id: ast::Identifier { name: key },
-                        value: ast::Pattern {
-                            elements: vec![ast::PatternElement::TextElement { value }],
-                        },
-                    })
-                    .collect(),
-                comment: None,
-            })
+impl TryFrom<StringMap> for fluent_syntax::ast::Resource<String> {
+    type Error = ParseError;
+
+    fn try_from(value: StringMap) -> Result<Self, Self::Error> {
+        let resources = value.strings.into_iter().fold(String::new(), |mut input, (key, value)| {
+            input.push_str(&key);
+            input.push_str(" = ");
+            input.push_str(&value.base);
+            input.push('\n');
+
+            for (k, v) in value.meta.into_iter() {
+                input.push_str("    .");
+                input.push_str(&k);
+                input.push_str(" = ");
+                input.push_str(&v);
+                input.push('\n');
+            }
+
+            input
         });
 
-        ast::Resource {
-            body: resources.collect(),
-        }
+        fluent_syntax::parser::parse(resources)
     }
 }
 
@@ -153,12 +152,20 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
                 };
 
                 if let Some(meta_key) = meta_key {
-                    languages
+                    let strings = languages
                         .get_mut(col_code)
                         .unwrap()
                         .strings
-                        .get_mut(id)
-                        .unwrap()
+                        .get_mut(id);
+                    let strings = match strings {
+                        Some(v) => v,
+                        None => {
+                            eprintln!("[{}] No parent string found for attribute at row {}; skipping", &sheet, row_idx);
+                            continue;
+                        }
+                    };
+
+                    strings
                         .meta
                         .insert(meta_key.to_string(), col_str);
                 } else {
