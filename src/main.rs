@@ -1,4 +1,4 @@
-use std::{path::{PathBuf}, fmt::Display};
+use std::{fmt::Display, path::PathBuf};
 
 use clap::{builder::PossibleValue, Parser, ValueEnum};
 use stringly::write_path_tree;
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
 
     let maybe_tree = match args.target {
         Target::Fluent => stringly::flt::generate(x),
-        _ => return Ok(()),
+        Target::TypeScript => stringly::ts::generate(x),
     };
 
     let tree = match maybe_tree {

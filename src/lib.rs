@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, ops::Deref, path::Path};
 
 use calamine::{Reader, Xlsx};
-use fluent_syntax::{parser::ParserError, ast::Resource};
+use fluent_syntax::{ast::Resource, parser::ParserError};
 use heck::ToSnakeCase;
 
 pub mod flt;
@@ -20,26 +20,29 @@ pub struct StringMap {
 
 pub type ParseError = (Resource<std::string::String>, Vec<ParserError>);
 
-impl TryFrom<StringMap> for fluent_syntax::ast::Resource<String> {
+impl TryFrom<&StringMap> for fluent_syntax::ast::Resource<String> {
     type Error = ParseError;
 
-    fn try_from(value: StringMap) -> Result<Self, Self::Error> {
-        let resources = value.strings.into_iter().fold(String::new(), |mut input, (key, value)| {
-            input.push_str(&key);
-            input.push_str(" = ");
-            input.push_str(&value.base);
-            input.push('\n');
-
-            for (k, v) in value.meta.into_iter() {
-                input.push_str("    .");
-                input.push_str(&k);
+    fn try_from(value: &StringMap) -> Result<Self, Self::Error> {
+        let resources = value
+            .strings
+            .iter()
+            .fold(String::new(), |mut input, (key, value)| {
+                input.push_str(&key);
                 input.push_str(" = ");
-                input.push_str(&v);
+                input.push_str(&value.base);
                 input.push('\n');
-            }
 
-            input
-        });
+                for (k, v) in value.meta.iter() {
+                    input.push_str("    .");
+                    input.push_str(&k);
+                    input.push_str(" = ");
+                    input.push_str(&v);
+                    input.push('\n');
+                }
+
+                input
+            });
 
         fluent_syntax::parser::parse(resources)
     }
@@ -52,17 +55,29 @@ pub struct StringData {
 }
 
 #[derive(Debug)]
+pub struct ProjectData {
+    base_language: String,
+    strings: BTreeMap<String, StringMap>,
+}
+
+impl ProjectData {
+    pub fn base_strings(&self) -> &StringMap {
+        self.strings.get(&self.base_language).unwrap()
+    }
+}
+
+#[derive(Debug)]
 #[repr(transparent)]
-pub struct InputData(BTreeMap<String, Vec<StringMap>>);
+pub struct InputData(BTreeMap<String, ProjectData>);
 
 impl InputData {
-    pub fn into_inner(self) -> BTreeMap<String, Vec<StringMap>> {
+    pub fn into_inner(self) -> BTreeMap<String, ProjectData> {
         self.0
     }
 }
 
 impl Deref for InputData {
-    type Target = BTreeMap<String, Vec<StringMap>>;
+    type Target = BTreeMap<String, ProjectData>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -108,7 +123,7 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
             })
             .collect::<Vec<_>>();
 
-        let Some((base_lang_idx, _base_lang_code)) = lang_cols.first() else {
+        let Some((base_lang_idx, base_lang_code)) = lang_cols.first() else {
             eprintln!("[{}] No base language found in sheet; skipping", sheet);
             continue;
         };
@@ -152,22 +167,19 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
                 };
 
                 if let Some(meta_key) = meta_key {
-                    let strings = languages
-                        .get_mut(col_code)
-                        .unwrap()
-                        .strings
-                        .get_mut(id);
+                    let strings = languages.get_mut(col_code).unwrap().strings.get_mut(id);
                     let strings = match strings {
                         Some(v) => v,
                         None => {
-                            eprintln!("[{}] No parent string found for attribute at row {}; skipping", &sheet, row_idx);
+                            eprintln!(
+                                "[{}] No parent string found for attribute at row {}; skipping",
+                                &sheet, row_idx
+                            );
                             continue;
                         }
                     };
 
-                    strings
-                        .meta
-                        .insert(meta_key.to_string(), col_str);
+                    strings.meta.insert(meta_key.to_string(), col_str);
                 } else {
                     let data = StringData {
                         base: col_str.to_string(),
@@ -184,7 +196,10 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
 
         projects.insert(
             sheet.to_snake_case(),
-            languages.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+            ProjectData {
+                base_language: base_lang_code.to_string(),
+                strings: languages.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
+            },
         );
     }
 
