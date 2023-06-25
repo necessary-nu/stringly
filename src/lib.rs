@@ -5,6 +5,7 @@ use fluent_syntax::{ast::Resource, parser::ParserError};
 use heck::ToSnakeCase;
 
 pub mod flt;
+pub mod translate;
 pub mod ts;
 
 pub enum PathNode {
@@ -56,8 +57,8 @@ pub struct StringData {
 
 #[derive(Debug)]
 pub struct ProjectData {
-    base_language: String,
-    strings: BTreeMap<String, StringMap>,
+    pub base_language: String,
+    pub strings: BTreeMap<String, StringMap>,
 }
 
 impl ProjectData {
