@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display};
 
 use heck::{ToLowerCamelCase, ToPascalCase, ToShoutySnakeCase};
+use icu::locid::Locale;
 
 use crate::{flt::ParseError, ir::Project, PathNode};
 
@@ -207,17 +208,23 @@ impl Display for Ast {
     }
 }
 
-fn dump_flt_inline(lang: &str, res: &fluent_syntax::ast::Resource<String>) -> String {
+fn dump_flt_inline(lang: &Locale, res: &fluent_syntax::ast::Resource<String>) -> String {
     format!(
         "const {} = flt(\"{lang}\")`\n{}`\n",
-        lang.to_shouty_snake_case(),
+        lang.to_string().to_shouty_snake_case(),
         fluent_syntax::serializer::serialize(res)
     )
 }
 
-fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a String>) -> String {
+fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a Locale>) -> String {
     let inner = langs
-        .map(|x| format!("{:?}: {}", x, x.to_shouty_snake_case()))
+        .map(|x| {
+            format!(
+                "{:?}: {}",
+                x.to_string(),
+                x.to_string().to_shouty_snake_case()
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ");
     format!("#bundles = {{\n{}\n}}\n", inner)
@@ -231,7 +238,7 @@ pub fn generate(input: Project) -> Result<BTreeMap<String, PathNode>, ParseError
         let mut flts = Vec::new();
 
         for (_, m) in project.translation_units.iter() {
-            let lang = m.language.clone();
+            let lang = m.locale.clone();
             let resource: fluent_syntax::ast::Resource<String> = m.try_into()?;
 
             flts.push(Ast::Body(Body::Raw(Raw(dump_flt_inline(&lang, &resource)))));

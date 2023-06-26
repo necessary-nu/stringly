@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::{builder::PossibleValue, Parser, ValueEnum};
+use icu::locid::Locale;
 use stringly::{translate, write_path_tree, xlsx::parse_xlsx};
 
 #[derive(Debug, Clone, Copy)]
@@ -74,7 +75,7 @@ struct TranslateArgs {
 
     #[arg(short, long)]
     /// The target language to be translated into
-    target_language: String,
+    target_language: Locale,
 
     #[arg(env = "GOOGLE_API_KEY", long = "api-key")]
     /// Google API key

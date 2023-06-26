@@ -1,9 +1,13 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeSet, path::Path, str::FromStr};
 
 use calamine::{Reader, Xlsx};
 use heck::ToSnakeCase;
+use icu::locid::Locale;
 
-use crate::ir::{Category, Project, TranslationUnit, TranslationUnitMap};
+use crate::{
+    ir::{CIdentifier, Category, Project, TUIdentifier, TranslationUnit, TranslationUnitMap},
+    BTreeKeyedSet,
+};
 
 pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
     let mut workbook: Xlsx<_> = calamine::open_workbook(xlsx_path)?;
@@ -15,7 +19,9 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
         .filter(|x| *x != "TODO")
         .collect::<Vec<_>>();
 
-    let mut categories = BTreeMap::new();
+    let mut categories: BTreeKeyedSet<_, Category> = BTreeKeyedSet::new(|category: &Category| {
+        CIdentifier::try_from(category.name.to_snake_case()).unwrap()
+    });
 
     for sheet in sheets {
         let range = workbook.worksheet_range(&sheet).unwrap()?;
@@ -42,25 +48,24 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
                     x.trim_start_matches('(').trim_end_matches(')').to_string(),
                 )
             })
-            .collect::<Vec<_>>();
+            .map(|(i, x)| Locale::from_str(&x).map(|x| (i, x)))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let Some((base_lang_idx, base_lang_code)) = lang_cols.first() else {
             eprintln!("[{}] No base language found in sheet; skipping", sheet);
             continue;
         };
 
-        let mut languages = lang_cols
-            .iter()
-            .map(|(_, x)| {
-                (
-                    x,
-                    TranslationUnitMap {
-                        language: x.to_string(),
-                        translation_units: Default::default(),
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
+        let mut languages = BTreeKeyedSet::from_set(
+            lang_cols
+                .iter()
+                .map(|(_, x)| TranslationUnitMap {
+                    locale: x.clone(),
+                    translation_units: Default::default(),
+                })
+                .collect::<BTreeSet<_>>(),
+            |x| x.locale.clone(),
+        );
 
         for (row_idx, row) in rows {
             let Some(id) = row.get(id_idx).unwrap().as_string() else {
@@ -68,8 +73,11 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
                 continue;
             };
             let mut chunks = id.split("__");
-            let id = chunks.next().unwrap();
-            let meta_key = chunks.next();
+            let id = TUIdentifier::try_from(chunks.next().unwrap())?;
+            let meta_key = match chunks.next() {
+                Some(v) => Some(TUIdentifier::from_str(v)?),
+                None => None,
+            };
 
             let Some(_base_str) = row.get(*base_lang_idx).unwrap().as_string() else {
                 eprintln!("[{}] No base string found at row {}; skipping", &sheet, row_idx);
@@ -87,12 +95,12 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
                     None => continue,
                 };
 
-                if let Some(meta_key) = meta_key {
+                if let Some(meta_key) = meta_key.as_ref() {
                     let strings = languages
                         .get_mut(col_code)
                         .unwrap()
                         .translation_units
-                        .get_mut(id);
+                        .get_mut(&id);
                     let strings = match strings {
                         Some(v) => v,
                         None => {
@@ -114,18 +122,16 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
                         .get_mut(col_code)
                         .unwrap()
                         .translation_units
-                        .insert(id.to_string(), data);
+                        .insert(id.clone(), data);
                 }
             }
         }
 
-        categories.insert(
-            sheet.to_snake_case(),
-            Category {
-                base_language: base_lang_code.to_string(),
-                translation_units: languages.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
-            },
-        );
+        categories.insert(Category {
+            name: sheet.to_string(),
+            base_locale: base_lang_code.clone(),
+            translation_units: languages,
+        });
     }
 
     Ok(Project { categories })

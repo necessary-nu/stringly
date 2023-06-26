@@ -1,11 +1,12 @@
 use std::{collections::BTreeMap, path::Path, sync::OnceLock};
 
+use icu::locid::Locale;
 use regex::{Captures, Regex};
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    ir::{TranslationUnit, TranslationUnitMap},
+    ir::{TUIdentifier, TranslationUnit, TranslationUnitMap},
     xlsx::parse_xlsx,
     PathNode,
 };
@@ -43,11 +44,14 @@ pub struct KeyedTranslation<'a> {
 async fn translate<'a>(
     api_key: &str,
     segments: &'a [KeyedString],
-    source_language: &str,
-    target_language: &str,
+    source_locale: &Locale,
+    target_locale: &Locale,
 ) -> Result<Vec<KeyedTranslation<'a>>, reqwest::Error> {
     let client = reqwest::Client::builder().build()?;
     let mut translated = vec![];
+
+    let source_language = source_locale.id.language.to_string();
+    let target_language = target_locale.id.language.to_string();
 
     for q in segments.chunks(128) {
         let response = client
@@ -55,8 +59,8 @@ async fn translate<'a>(
             .query(&[("key", &api_key)])
             .json(&json!({
                 "q": q.iter().map(|s| &s.value).collect::<Vec<_>>(),
-                "source": source_language,
-                "target": target_language,
+                "source": &source_language,
+                "target": &target_language
             }))
             .send()
             .await?
@@ -98,7 +102,7 @@ fn convert_from_html(text: &str) -> String {
 
 pub async fn process(
     input_xlsx_path: &Path,
-    target_language: &str,
+    target_language: &Locale,
     google_api_key: &str,
 ) -> anyhow::Result<BTreeMap<String, PathNode>> {
     let input = parse_xlsx(input_xlsx_path)?;
@@ -106,7 +110,7 @@ pub async fn process(
 
     for (k, v) in input.categories.into_iter() {
         let mut subfiles = BTreeMap::new();
-        let source_language = &v.base_language;
+        let source_language = &v.base_locale;
 
         let strings = v
             .base_strings()
@@ -115,7 +119,7 @@ pub async fn process(
             .flat_map(|(key, x)| {
                 let source = convert_to_html(&x.main);
                 std::iter::once(KeyedString {
-                    key: key.clone(),
+                    key: key.to_string(),
                     value: source,
                 })
                 .chain(x.attributes.iter().map(move |x| {
@@ -132,22 +136,25 @@ pub async fn process(
         let strings = translate(google_api_key, &strings, source_language, target_language).await?;
 
         let mut out = TranslationUnitMap {
-            language: target_language.to_string(),
+            locale: target_language.clone(),
             translation_units: BTreeMap::new(),
         };
 
         for x in strings.into_iter() {
             let mut iter = x.key.split("__");
-            let base_id = iter.next().unwrap();
-            let meta_id = iter.next();
+            let base_id = TUIdentifier::try_from(iter.next().unwrap()).unwrap();
+            let meta_id = match iter.next() {
+                Some(v) => Some(TUIdentifier::try_from(v).unwrap()),
+                None => None,
+            };
 
             if let Some(meta_id) = meta_id {
-                let map = out.translation_units.get_mut(base_id).unwrap();
+                let map = out.translation_units.get_mut(&base_id).unwrap();
                 map.attributes
                     .insert(meta_id.to_string(), convert_from_html(&x.target));
             } else {
                 out.translation_units.insert(
-                    base_id.to_string(),
+                    base_id.clone(),
                     TranslationUnit {
                         main: convert_from_html(&x.target),
                         attributes: Default::default(),
@@ -162,7 +169,7 @@ pub async fn process(
             PathNode::File(fluent_syntax::serializer::serialize(&x).into_bytes()),
         );
 
-        files.insert(k, PathNode::Directory(subfiles));
+        files.insert(k.to_string(), PathNode::Directory(subfiles));
     }
 
     Ok(files)

@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::{Deref, DerefMut},
+    path::Path,
+};
 
 pub mod flt;
 pub mod ir;
@@ -26,4 +30,51 @@ pub fn write_path_tree(prefix: &Path, tree: BTreeMap<String, PathNode>) -> std::
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct BTreeKeyedSet<K, V> {
+    map: BTreeMap<K, V>,
+    keyer: fn(&V) -> K,
+}
+
+impl<K, V> BTreeKeyedSet<K, V> {
+    pub fn new(keyer: fn(&V) -> K) -> Self {
+        Self {
+            map: Default::default(),
+            keyer,
+        }
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
+        self.map.into_iter()
+    }
+}
+
+impl<K: Ord, V> BTreeKeyedSet<K, V> {
+    pub fn insert(&mut self, value: V) {
+        self.map.insert((self.keyer)(&value), value);
+    }
+
+    pub fn from_set(value: BTreeSet<V>, keyer: fn(&V) -> K) -> Self {
+        let map = value
+            .into_iter()
+            .map(|v| (keyer(&v), v))
+            .collect::<BTreeMap<_, _>>();
+        Self { map, keyer }
+    }
+}
+
+impl<K, V> Deref for BTreeKeyedSet<K, V> {
+    type Target = BTreeMap<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl<K, V> DerefMut for BTreeKeyedSet<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.map
+    }
 }

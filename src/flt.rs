@@ -12,14 +12,14 @@ pub fn generate(input: Project) -> Result<BTreeMap<String, PathNode>, ParseError
     for (k, v) in input.categories.into_iter() {
         let mut subfiles = BTreeMap::new();
         for m in v.translation_units.values() {
-            let lang = m.language.clone();
+            let lang = m.locale.clone();
             let x: fluent_syntax::ast::Resource<String> = m.try_into()?;
             subfiles.insert(
                 format!("{lang}.flt"),
                 PathNode::File(fluent_syntax::serializer::serialize(&x).into_bytes()),
             );
         }
-        files.insert(k, PathNode::Directory(subfiles));
+        files.insert(k.to_string(), PathNode::Directory(subfiles));
     }
     Ok(files)
 }
