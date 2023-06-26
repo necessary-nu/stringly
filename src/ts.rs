@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt::Display};
 
 use heck::{ToLowerCamelCase, ToPascalCase, ToShoutySnakeCase};
 
-use crate::{InputData, ParseError, PathNode};
+use crate::{flt::ParseError, ir::InputData, PathNode};
 
 #[derive(Debug, Clone)]
 struct Interface {
@@ -166,7 +166,7 @@ impl Display for Class {
                 .join(",");
             write!(f, "{}", impls)?;
         }
-        write!(f, " {{\n")?;
+        writeln!(f, " {{")?;
         for ast in &self.body {
             write!(f, "{}", ast)?;
         }
@@ -211,7 +211,7 @@ fn dump_flt_inline(lang: &str, res: &fluent_syntax::ast::Resource<String>) -> St
     format!(
         "const {} = flt(\"{lang}\")`\n{}`\n",
         lang.to_shouty_snake_case(),
-        fluent_syntax::serializer::serialize(&res)
+        fluent_syntax::serializer::serialize(res)
     )
 }
 

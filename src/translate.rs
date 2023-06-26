@@ -4,7 +4,11 @@ use regex::{Captures, Regex};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{PathNode, StringData, StringMap};
+use crate::{
+    ir::{StringData, StringMap},
+    xlsx::parse_xlsx,
+    PathNode,
+};
 
 const GOOGLE_TRANSLATE_URL: &str = "https://translation.googleapis.com/language/translate/v2";
 
@@ -97,7 +101,7 @@ pub async fn process(
     target_language: &str,
     google_api_key: &str,
 ) -> anyhow::Result<BTreeMap<String, PathNode>> {
-    let input = crate::parse_xlsx(input_xlsx_path)?;
+    let input = parse_xlsx(input_xlsx_path)?;
     let mut files = BTreeMap::new();
 
     for (k, v) in input.into_inner().into_iter() {
@@ -108,14 +112,14 @@ pub async fn process(
             .base_strings()
             .strings
             .iter()
-            .map(|(key, x)| {
+            .flat_map(|(key, x)| {
                 let source = convert_to_html(&x.base);
                 std::iter::once(KeyedString {
                     key: key.clone(),
                     value: source,
                 })
                 .chain(x.meta.iter().map(move |x| {
-                    let source = convert_to_html(&x.1);
+                    let source = convert_to_html(x.1);
 
                     KeyedString {
                         key: format!("{key}__{}", x.0),
@@ -123,7 +127,6 @@ pub async fn process(
                     }
                 }))
             })
-            .flatten()
             .collect::<Vec<_>>();
 
         let strings = translate(google_api_key, &strings, source_language, target_language).await?;

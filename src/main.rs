@@ -1,10 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::{builder::PossibleValue, Parser, ValueEnum};
-use stringly::{
-    translate::{self, KeyedString, KeyedTranslation},
-    write_path_tree,
-};
+use stringly::{translate, write_path_tree, xlsx::parse_xlsx};
 
 #[derive(Debug, Clone, Copy)]
 enum Target {
@@ -101,7 +98,7 @@ async fn run() -> anyhow::Result<()> {
         Command::Generate(args) => {
             eprintln!("Generating for target: {}", args.target);
 
-            let x = stringly::parse_xlsx(&args.input_xlsx_path)?;
+            let x = parse_xlsx(&args.input_xlsx_path)?;
             std::fs::create_dir_all(&args.output_path)?;
 
             let maybe_tree = match args.target {
