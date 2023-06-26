@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::Path, sync::OnceLock};
+use std::{collections::BTreeMap, sync::OnceLock};
 
 use icu::locid::Locale;
 use regex::{Captures, Regex};
@@ -6,8 +6,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    ir::{TUIdentifier, TranslationUnit, TranslationUnitMap},
-    xlsx::parse_xlsx,
+    ir::{Project, TUIdentifier, TranslationUnit, TranslationUnitMap},
     PathNode,
 };
 
@@ -101,14 +100,13 @@ fn convert_from_html(text: &str) -> String {
 }
 
 pub async fn process(
-    input_xlsx_path: &Path,
+    input: &Project,
     target_language: &Locale,
     google_api_key: &str,
 ) -> anyhow::Result<BTreeMap<String, PathNode>> {
-    let input = parse_xlsx(input_xlsx_path)?;
     let mut files = BTreeMap::new();
 
-    for (k, v) in input.categories.into_iter() {
+    for (k, v) in input.categories.iter() {
         let mut subfiles = BTreeMap::new();
         let source_language = &v.base_locale;
 

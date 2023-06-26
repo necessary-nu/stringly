@@ -1,8 +1,9 @@
 use std::{fmt::Display, path::PathBuf};
 
+use calamine::Xlsx;
 use clap::{builder::PossibleValue, Parser, ValueEnum};
 use icu::locid::Locale;
-use stringly::{translate, write_path_tree, xlsx::parse_xlsx};
+use stringly::{ir::Project, translate, write_path_tree};
 
 #[derive(Debug, Clone, Copy)]
 enum Target {
@@ -99,12 +100,13 @@ async fn run() -> anyhow::Result<()> {
         Command::Generate(args) => {
             eprintln!("Generating for target: {}", args.target);
 
-            let x = parse_xlsx(&args.input_xlsx_path)?;
+            let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_xlsx_path)?;
+            let project = Project::try_from(xlsx)?;
             std::fs::create_dir_all(&args.output_path)?;
 
             let maybe_tree = match args.target {
-                Target::Fluent => stringly::flt::generate(x),
-                Target::TypeScript => stringly::ts::generate(x),
+                Target::Fluent => stringly::flt::generate(project),
+                Target::TypeScript => stringly::ts::generate(project),
             };
 
             let tree = match maybe_tree {
@@ -119,12 +121,11 @@ async fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Translate(args) => {
-            let tree = translate::process(
-                &args.input_xlsx_path,
-                &args.target_language,
-                &args.google_api_key,
-            )
-            .await?;
+            let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_xlsx_path)?;
+            let project = Project::try_from(xlsx)?;
+
+            let tree =
+                translate::process(&project, &args.target_language, &args.google_api_key).await?;
             write_path_tree(&args.output_path, tree)?;
 
             Ok(())

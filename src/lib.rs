@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
     ops::{Deref, DerefMut},
     path::Path,
 };
@@ -32,10 +33,16 @@ pub fn write_path_tree(prefix: &Path, tree: BTreeMap<String, PathNode>) -> std::
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BTreeKeyedSet<K, V> {
     map: BTreeMap<K, V>,
     keyer: fn(&V) -> K,
+}
+
+impl<K: Debug, V: Debug> Debug for BTreeKeyedSet<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.map.fmt(f)
+    }
 }
 
 impl<K, V> BTreeKeyedSet<K, V> {

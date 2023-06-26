@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, path::Path, str::FromStr};
+use std::{
+    collections::BTreeSet,
+    io::{Read, Seek},
+    str::FromStr,
+};
 
 use calamine::{Reader, Xlsx};
 use heck::ToSnakeCase;
@@ -9,8 +13,21 @@ use crate::{
     BTreeKeyedSet,
 };
 
-pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
-    let mut workbook: Xlsx<_> = calamine::open_workbook(xlsx_path)?;
+impl<T> TryFrom<Xlsx<T>> for Project
+where
+    T: Read + Seek,
+{
+    type Error = anyhow::Error;
+
+    fn try_from(value: Xlsx<T>) -> Result<Self, Self::Error> {
+        parse_xlsx(value)
+    }
+}
+
+fn parse_xlsx<T>(mut workbook: Xlsx<T>) -> anyhow::Result<Project>
+where
+    T: Read + Seek,
+{
     let sheets = workbook
         .worksheets()
         .iter()
@@ -134,5 +151,6 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
         });
     }
 
-    Ok(Project { categories })
+    let project = Project { categories };
+    Ok(project)
 }
