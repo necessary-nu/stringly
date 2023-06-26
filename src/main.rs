@@ -6,6 +6,34 @@ use icu::locid::Locale;
 use stringly::{ir::Project, translate, write_path_tree};
 
 #[derive(Debug, Clone, Copy)]
+enum FromFormat {
+    Fluent,
+    Xlsx,
+}
+
+impl Display for FromFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            FromFormat::Fluent => "Fluent",
+            FromFormat::Xlsx => "XLSX",
+        })
+    }
+}
+
+impl ValueEnum for FromFormat {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::Fluent, Self::Xlsx]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue> {
+        match self {
+            Self::Xlsx => Some(PossibleValue::new("xlsx")),
+            Self::Fluent => Some(PossibleValue::new("fluent").alias("flt")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 enum Target {
     Fluent,
     TypeScript,
@@ -48,16 +76,19 @@ enum Command {
 #[derive(Debug, Parser)]
 struct GenerateArgs {
     #[arg(short, long)]
-    /// Path to the output directory
-    output_path: PathBuf,
+    /// Path to the input format path
+    input_path: PathBuf,
 
     #[arg(short, long)]
-    /// Path to the input .xlsx file
-    input_xlsx_path: PathBuf,
+    from_format: FromFormat,
 
     #[arg(short, long)]
     /// The target for the output
-    target: Target,
+    to_format: Target,
+
+    #[arg(short, long)]
+    /// Path to the output directory
+    output_path: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -98,13 +129,13 @@ async fn run() -> anyhow::Result<()> {
 
     match command {
         Command::Generate(args) => {
-            eprintln!("Generating for target: {}", args.target);
+            eprintln!("Generating for format: {}", args.to_format);
 
-            let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_xlsx_path)?;
+            let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_path)?;
             let project = Project::try_from(xlsx)?;
             std::fs::create_dir_all(&args.output_path)?;
 
-            let maybe_tree = match args.target {
+            let maybe_tree = match args.to_format {
                 Target::Fluent => stringly::flt::generate(project),
                 Target::TypeScript => stringly::ts::generate(project),
             };
