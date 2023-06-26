@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    ir::{StringData, StringMap},
+    ir::{TranslationUnit, TranslationUnitMap},
     xlsx::parse_xlsx,
     PathNode,
 };
@@ -110,15 +110,15 @@ pub async fn process(
 
         let strings = v
             .base_strings()
-            .strings
+            .translation_units
             .iter()
             .flat_map(|(key, x)| {
-                let source = convert_to_html(&x.base);
+                let source = convert_to_html(&x.main);
                 std::iter::once(KeyedString {
                     key: key.clone(),
                     value: source,
                 })
-                .chain(x.meta.iter().map(move |x| {
+                .chain(x.attributes.iter().map(move |x| {
                     let source = convert_to_html(x.1);
 
                     KeyedString {
@@ -131,9 +131,9 @@ pub async fn process(
 
         let strings = translate(google_api_key, &strings, source_language, target_language).await?;
 
-        let mut out = StringMap {
+        let mut out = TranslationUnitMap {
             language: target_language.to_string(),
-            strings: BTreeMap::new(),
+            translation_units: BTreeMap::new(),
         };
 
         for x in strings.into_iter() {
@@ -142,15 +142,15 @@ pub async fn process(
             let meta_id = iter.next();
 
             if let Some(meta_id) = meta_id {
-                let map = out.strings.get_mut(base_id).unwrap();
-                map.meta
+                let map = out.translation_units.get_mut(base_id).unwrap();
+                map.attributes
                     .insert(meta_id.to_string(), convert_from_html(&x.target));
             } else {
-                out.strings.insert(
+                out.translation_units.insert(
                     base_id.to_string(),
-                    StringData {
-                        base: convert_from_html(&x.target),
-                        meta: Default::default(),
+                    TranslationUnit {
+                        main: convert_from_html(&x.target),
+                        attributes: Default::default(),
                     },
                 );
             }

@@ -2,46 +2,83 @@
 //!
 //! InputData -> ProjectData -> StringMap -> StringData
 
-use std::{collections::BTreeMap, ops::Deref};
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(transparent)]
-pub struct InputData(pub BTreeMap<String, ProjectData>);
+pub struct Project(pub BTreeMap<String, Category>);
 
-impl InputData {
-    pub fn into_inner(self) -> BTreeMap<String, ProjectData> {
+impl Project {
+    pub fn into_inner(self) -> BTreeMap<String, Category> {
         self.0
     }
 }
 
-impl Deref for InputData {
-    type Target = BTreeMap<String, ProjectData>;
+impl Deref for Project {
+    type Target = BTreeMap<String, Category>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-#[derive(Debug)]
-pub struct ProjectData {
-    pub base_language: String,
-    pub strings: BTreeMap<String, StringMap>,
-}
-
-impl ProjectData {
-    pub fn base_strings(&self) -> &StringMap {
-        self.strings.get(&self.base_language).unwrap()
+impl DerefMut for Project {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
-#[derive(Debug)]
-pub struct StringData {
-    pub base: String,
-    pub meta: BTreeMap<String, String>,
+#[derive(Debug, Clone)]
+pub struct Category {
+    pub base_language: String,
+    pub translation_units: BTreeMap<String, TranslationUnitMap>,
 }
 
-#[derive(Debug)]
-pub struct StringMap {
+impl Category {
+    pub fn base_strings(&self) -> &TranslationUnitMap {
+        self.translation_units.get(&self.base_language).unwrap()
+    }
+}
+
+impl Deref for Category {
+    type Target = BTreeMap<String, TranslationUnitMap>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.translation_units
+    }
+}
+
+impl DerefMut for Category {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.translation_units
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TranslationUnitMap {
     pub language: String,
-    pub strings: BTreeMap<String, StringData>,
+    pub translation_units: BTreeMap<String, TranslationUnit>,
+}
+
+impl Deref for TranslationUnitMap {
+    type Target = BTreeMap<String, TranslationUnit>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.translation_units
+    }
+}
+
+impl DerefMut for TranslationUnitMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.translation_units
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TranslationUnit {
+    pub main: String,
+    pub attributes: BTreeMap<String, String>,
 }

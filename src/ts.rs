@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt::Display};
 
 use heck::{ToLowerCamelCase, ToPascalCase, ToShoutySnakeCase};
 
-use crate::{flt::ParseError, ir::InputData, PathNode};
+use crate::{flt::ParseError, ir::Project, PathNode};
 
 #[derive(Debug, Clone)]
 struct Interface {
@@ -223,14 +223,14 @@ fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a String>) -> String 
     format!("#bundles = {{\n{}\n}}\n", inner)
 }
 
-pub fn generate(input: InputData) -> Result<BTreeMap<String, PathNode>, ParseError> {
+pub fn generate(input: Project) -> Result<BTreeMap<String, PathNode>, ParseError> {
     let mut bundle_files = BTreeMap::new();
     let mut index_bundles = vec![];
 
     for (module_name, project) in input.into_inner().into_iter() {
         let mut flts = Vec::new();
 
-        for (_, m) in project.strings.iter() {
+        for (_, m) in project.translation_units.iter() {
             let lang = m.language.clone();
             let resource: fluent_syntax::ast::Resource<String> = m.try_into()?;
 
@@ -319,7 +319,7 @@ pub fn generate(input: InputData) -> Result<BTreeMap<String, PathNode>, ParseErr
             exported: true,
             implements: vec![],
             body: [Ast::Body(Body::Raw(Raw(
-                dump_flt_resource_map(project.strings.keys()),
+                dump_flt_resource_map(project.translation_units.keys()),
             ))), Ast::Body(Body::Raw(Raw(
                 "#context: Context\nconstructor(context: Context) { this.#context = context; }\n"
                     .into(),

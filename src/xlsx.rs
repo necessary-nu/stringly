@@ -3,9 +3,9 @@ use std::{collections::BTreeMap, path::Path};
 use calamine::{Reader, Xlsx};
 use heck::ToSnakeCase;
 
-use crate::ir::{InputData, ProjectData, StringData, StringMap};
+use crate::ir::{Category, Project, TranslationUnit, TranslationUnitMap};
 
-pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
+pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
     let mut workbook: Xlsx<_> = calamine::open_workbook(xlsx_path)?;
     let sheets = workbook
         .worksheets()
@@ -54,9 +54,9 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
             .map(|(_, x)| {
                 (
                     x,
-                    StringMap {
+                    TranslationUnitMap {
                         language: x.to_string(),
-                        strings: Default::default(),
+                        translation_units: Default::default(),
                     },
                 )
             })
@@ -88,7 +88,11 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
                 };
 
                 if let Some(meta_key) = meta_key {
-                    let strings = languages.get_mut(col_code).unwrap().strings.get_mut(id);
+                    let strings = languages
+                        .get_mut(col_code)
+                        .unwrap()
+                        .translation_units
+                        .get_mut(id);
                     let strings = match strings {
                         Some(v) => v,
                         None => {
@@ -100,16 +104,16 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
                         }
                     };
 
-                    strings.meta.insert(meta_key.to_string(), col_str);
+                    strings.attributes.insert(meta_key.to_string(), col_str);
                 } else {
-                    let data = StringData {
-                        base: col_str.to_string(),
-                        meta: Default::default(),
+                    let data = TranslationUnit {
+                        main: col_str.to_string(),
+                        attributes: Default::default(),
                     };
                     languages
                         .get_mut(col_code)
                         .unwrap()
-                        .strings
+                        .translation_units
                         .insert(id.to_string(), data);
                 }
             }
@@ -117,12 +121,12 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<InputData> {
 
         projects.insert(
             sheet.to_snake_case(),
-            ProjectData {
+            Category {
                 base_language: base_lang_code.to_string(),
-                strings: languages.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
+                translation_units: languages.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
             },
         );
     }
 
-    Ok(InputData(projects))
+    Ok(Project(projects))
 }
