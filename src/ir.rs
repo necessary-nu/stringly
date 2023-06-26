@@ -1,6 +1,6 @@
 //! Intermediate representation of our localisation project:
 //!
-//! InputData -> ProjectData -> StringMap -> StringData
+//! Project -> Category -> TranslationUnitMap -> TranslationUnit
 
 use std::{
     collections::BTreeMap,
@@ -8,26 +8,21 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-#[repr(transparent)]
-pub struct Project(pub BTreeMap<String, Category>);
-
-impl Project {
-    pub fn into_inner(self) -> BTreeMap<String, Category> {
-        self.0
-    }
+pub struct Project {
+    pub categories: BTreeMap<String, Category>,
 }
 
 impl Deref for Project {
     type Target = BTreeMap<String, Category>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.categories
     }
 }
 
 impl DerefMut for Project {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.categories
     }
 }
 

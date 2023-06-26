@@ -15,7 +15,7 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
         .filter(|x| *x != "TODO")
         .collect::<Vec<_>>();
 
-    let mut projects = BTreeMap::new();
+    let mut categories = BTreeMap::new();
 
     for sheet in sheets {
         let range = workbook.worksheet_range(&sheet).unwrap()?;
@@ -119,7 +119,7 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
             }
         }
 
-        projects.insert(
+        categories.insert(
             sheet.to_snake_case(),
             Category {
                 base_language: base_lang_code.to_string(),
@@ -128,5 +128,5 @@ pub fn parse_xlsx(xlsx_path: &Path) -> anyhow::Result<Project> {
         );
     }
 
-    Ok(Project(projects))
+    Ok(Project { categories })
 }

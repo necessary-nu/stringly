@@ -104,7 +104,7 @@ pub async fn process(
     let input = parse_xlsx(input_xlsx_path)?;
     let mut files = BTreeMap::new();
 
-    for (k, v) in input.into_inner().into_iter() {
+    for (k, v) in input.categories.into_iter() {
         let mut subfiles = BTreeMap::new();
         let source_language = &v.base_language;
 

@@ -9,7 +9,7 @@ use crate::{
 
 pub fn generate(input: Project) -> Result<BTreeMap<String, PathNode>, ParseError> {
     let mut files = BTreeMap::new();
-    for (k, v) in input.into_inner().into_iter() {
+    for (k, v) in input.categories.into_iter() {
         let mut subfiles = BTreeMap::new();
         for m in v.translation_units.values() {
             let lang = m.language.clone();

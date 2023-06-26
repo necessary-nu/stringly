@@ -227,7 +227,7 @@ pub fn generate(input: Project) -> Result<BTreeMap<String, PathNode>, ParseError
     let mut bundle_files = BTreeMap::new();
     let mut index_bundles = vec![];
 
-    for (module_name, project) in input.into_inner().into_iter() {
+    for (module_name, project) in input.categories.into_iter() {
         let mut flts = Vec::new();
 
         for (_, m) in project.translation_units.iter() {
