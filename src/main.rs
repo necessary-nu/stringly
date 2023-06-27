@@ -3,7 +3,7 @@ use std::{fmt::Display, path::PathBuf};
 use calamine::Xlsx;
 use clap::{builder::PossibleValue, Parser, ValueEnum};
 use icu::locid::LanguageIdentifier;
-use stringly::{ir::Project, translate, flt::load_project_from_path};
+use stringly::{flt::load_project_from_path, ir::Project, translate};
 
 #[derive(Debug, Clone, Copy)]
 enum FromFormat {
@@ -45,7 +45,7 @@ impl Display for Target {
         f.write_str(match self {
             Target::Fluent => "Fluent",
             Target::TypeScript => "TypeScript",
-            Target::Xlsx => "XLSX"
+            Target::Xlsx => "XLSX",
         })
     }
 }
@@ -97,18 +97,21 @@ struct GenerateArgs {
 #[derive(Debug, Parser)]
 struct TranslateArgs {
     #[arg(short, long)]
+    /// Path to the input format path
+    input_path: PathBuf,
+
+    #[arg(short, long)]
+    from_format: FromFormat,
+
+    #[arg(short, long)]
+    /// The target for the output
+    to_format: Target,
+
+    #[arg(short, long)]
     /// Path to the output directory
     output_path: PathBuf,
 
-    #[arg(short, long)]
-    /// Path to the input .xlsx file
-    input_xlsx_path: PathBuf,
-
-    #[arg(short, long)]
-    /// Which sheet to use
-    sheet_name: Option<String>,
-
-    #[arg(short, long)]
+    #[arg(short = 'l', long = "language")]
     /// The target language to be translated into
     target_language: LanguageIdentifier,
 
@@ -135,9 +138,7 @@ async fn run() -> anyhow::Result<()> {
             eprintln!("Loading from format: {}", args.from_format);
 
             let project = match args.from_format {
-                FromFormat::Fluent => {
-                    load_project_from_path(&args.input_path)?
-                }
+                FromFormat::Fluent => load_project_from_path(&args.input_path)?,
                 FromFormat::Xlsx => {
                     let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_path)?;
                     Project::try_from(xlsx)?
@@ -151,7 +152,7 @@ async fn run() -> anyhow::Result<()> {
                 Target::TypeScript => stringly::ts::generate(project),
                 Target::Xlsx => {
                     unimplemented!()
-                },
+                }
             };
 
             let tree = match maybe_tree {
@@ -166,14 +167,38 @@ async fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Translate(args) => {
-            let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_xlsx_path)?;
-            let project = Project::try_from(xlsx)?;
+            eprintln!("Loading from format: {}", args.from_format);
 
-            let tree =
+            let project = match args.from_format {
+                FromFormat::Fluent => load_project_from_path(&args.input_path)?,
+                FromFormat::Xlsx => {
+                    let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_path)?;
+                    Project::try_from(xlsx)?
+                }
+            };
+
+            let project =
                 translate::process(&project, &args.target_language, &args.google_api_key).await?;
 
-            tree.write(&args.output_path)?;
+            eprintln!("Generating for format: {}", args.to_format);
 
+            let maybe_tree = match args.to_format {
+                Target::Fluent => stringly::flt::generate(project),
+                Target::TypeScript => stringly::ts::generate(project),
+                Target::Xlsx => {
+                    unimplemented!()
+                }
+            };
+
+            let tree = match maybe_tree {
+                Ok(v) => v,
+                Err(error) => {
+                    eprintln!("{:?}", error);
+                    return Err(error.into());
+                }
+            };
+
+            tree.write(&args.output_path)?;
             Ok(())
         }
     }

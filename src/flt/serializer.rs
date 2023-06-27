@@ -58,6 +58,12 @@ pub fn serialize<'s, S: Slice<'s>>(resource: &Resource<S>) -> String {
     serialize_with_options(resource, Options::default())
 }
 
+pub fn serialize_message<'s, S: Slice<'s>>(message: &Message<S>) -> String {
+    let mut ser = Serializer::new(Default::default());
+    ser.serialize_message(message);
+    ser.into_serialized_text()
+}
+
 pub fn serialize_pattern<'s, S: Slice<'s>>(pattern: &Pattern<S>) -> String {
     let mut ser = Serializer::new(Default::default());
     ser.serialize_pattern(pattern);

@@ -1,14 +1,11 @@
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::sync::OnceLock;
 
 use icu::locid::LanguageIdentifier;
 use regex::{Captures, Regex};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{
-    ir::{Project, TUIdentifier, TranslationUnit, TranslationUnitMap},
-    PathNode,
-};
+use crate::ir::{Project, TUIdentifier, TranslationUnit, TranslationUnitMap};
 
 const GOOGLE_TRANSLATE_URL: &str = "https://translation.googleapis.com/language/translate/v2";
 
@@ -84,7 +81,7 @@ static TO_HTML_REGEX: std::sync::OnceLock<Regex> = OnceLock::new();
 static FROM_HTML_REGEX: std::sync::OnceLock<Regex> = OnceLock::new();
 
 fn convert_to_html(text: &str) -> String {
-    let regex = TO_HTML_REGEX.get_or_init(|| Regex::new(r"\{\s*\$(.+?)\s*\}").unwrap());
+    let regex = TO_HTML_REGEX.get_or_init(|| Regex::new(r"\{\s*(.+?)\s*\}").unwrap());
     regex
         .replace_all(text, |c: &Captures| {
             format!("<a id=\"{}\">{}</a>", &c[1], &c[1])
@@ -95,7 +92,7 @@ fn convert_to_html(text: &str) -> String {
 fn convert_from_html(text: &str) -> String {
     let regex = FROM_HTML_REGEX.get_or_init(|| Regex::new(r#"<a id="(.+?)">.+?</a>"#).unwrap());
     regex
-        .replace_all(text, |c: &Captures| format!("{{ ${} }}", &c[1]))
+        .replace_all(text, |c: &Captures| format!("{{ {} }}", &c[1]))
         .to_string()
 }
 
@@ -103,11 +100,10 @@ pub async fn process(
     input: &Project,
     target_language: &LanguageIdentifier,
     google_api_key: &str,
-) -> anyhow::Result<PathNode> {
-    let mut files = BTreeMap::new();
+) -> anyhow::Result<Project> {
+    let mut project = input.clone();
 
-    for (k, v) in input.categories.iter() {
-        let mut subfiles = BTreeMap::new();
+    for (k, v) in project.categories.iter_mut() {
         let source_language = &v.default_locale;
 
         let strings = v
@@ -131,6 +127,7 @@ pub async fn process(
             })
             .collect::<Vec<_>>();
 
+        eprintln!("Translating {k}...");
         let strings = translate(google_api_key, &strings, source_language, target_language).await?;
 
         let mut out = TranslationUnitMap {
@@ -138,13 +135,11 @@ pub async fn process(
             translation_units: Default::default(),
         };
 
+        eprintln!("Generating translation units...");
         for x in strings.into_iter() {
             let mut iter = x.key.split("__");
             let base_id = TUIdentifier::try_from(iter.next().unwrap()).unwrap();
-            let meta_id = match iter.next() {
-                Some(v) => Some(TUIdentifier::try_from(v).unwrap()),
-                None => None,
-            };
+            let meta_id = iter.next().map(|v| TUIdentifier::try_from(v).unwrap());
 
             if let Some(meta_id) = meta_id {
                 let map = out.translation_units.get_mut(&base_id).unwrap();
@@ -158,16 +153,10 @@ pub async fn process(
             }
         }
 
-        let x: fluent_syntax::ast::Resource<String> = (&out).try_into().unwrap();
-        subfiles.insert(
-            format!("{target_language}.flt"),
-            PathNode::File(fluent_syntax::serializer::serialize(&x).into_bytes()),
-        );
-
-        files.insert(k.to_string(), PathNode::Directory(subfiles));
+        v.insert(out);
     }
 
-    Ok(PathNode::Directory(files))
+    Ok(project)
 }
 
 #[cfg(test)]
@@ -180,9 +169,21 @@ mod tests {
         let html = convert_to_html(test);
         assert_eq!(
             html,
-            "This is <a id=\"var\">var</a> and also <a id=\"upsetting-var\">upsetting-var</a>."
+            "This is <a id=\"$var\">$var</a> and also <a id=\"$upsetting-var\">$upsetting-var</a>."
         );
         let text = convert_from_html(&html);
         assert_eq!(text, "This is { $var } and also { $upsetting-var }.")
+    }
+
+    #[test]
+    fn html_term() {
+        let test = "This is { $var } and also { -upsetting-var }.";
+        let html = convert_to_html(test);
+        assert_eq!(
+            html,
+            "This is <a id=\"$var\">$var</a> and also <a id=\"-upsetting-var\">-upsetting-var</a>."
+        );
+        let text = convert_from_html(&html);
+        assert_eq!(text, "This is { $var } and also { -upsetting-var }.")
     }
 }

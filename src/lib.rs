@@ -67,9 +67,9 @@ impl PathNode {
             PathNode::File(data) => {
                 std::fs::write(prefix, data)?;
                 Ok(())
-            },
+            }
             PathNode::Directory(tree) => {
-                std::fs::create_dir_all(&prefix)?;
+                std::fs::create_dir_all(prefix)?;
                 write_directory(prefix, tree)
             }
         }

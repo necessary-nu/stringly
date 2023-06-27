@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::Path, str::FromStr};
+use std::{collections::BTreeMap, ops::Deref, path::Path, str::FromStr};
 
 use fluent_syntax::{ast, parser::ParserError};
 use icu::locid::{locale, LanguageIdentifier};
@@ -50,7 +50,14 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         let mut subfiles = BTreeMap::new();
         for m in v.translation_units.values() {
             let lang = m.locale.clone();
-            let x: ast::Resource<String> = m.try_into()?;
+            let x: ast::Resource<String> = match m.try_into() {
+                Ok(x) => x,
+                Err(e) => {
+                    eprintln!("Error parsing translation unit: {} {}", k, m.locale);
+                    eprintln!("{:?}", e);
+                    std::process::exit(1);
+                }
+            };
             subfiles.insert(
                 format!("{lang}.flt"),
                 PathNode::File(fluent_syntax::serializer::serialize(&x).into_bytes()),
@@ -179,18 +186,40 @@ impl TryFrom<&TranslationUnitMap> for ast::Resource<String> {
                 .translation_units
                 .iter()
                 .fold(String::new(), |mut input, (key, value)| {
-                    input.push_str(key);
-                    input.push_str(" = ");
-                    input.push_str(&value.main);
-                    input.push('\n');
+                    let message = ast::Message {
+                        id: ast::Identifier { name: key.deref() },
+                        value: Some(ast::Pattern {
+                            elements: vec![ast::PatternElement::TextElement {
+                                value: &*value.main,
+                            }],
+                        }),
+                        attributes: value
+                            .attributes
+                            .iter()
+                            .map(|(k, v)| ast::Attribute {
+                                id: ast::Identifier { name: k.deref() },
+                                value: ast::Pattern {
+                                    elements: vec![ast::PatternElement::TextElement { value: v }],
+                                },
+                            })
+                            .collect::<Vec<_>>(),
+                        comment: None,
+                    };
 
-                    for (k, v) in value.attributes.iter() {
-                        input.push_str("    .");
-                        input.push_str(k);
-                        input.push_str(" = ");
-                        input.push_str(v);
-                        input.push('\n');
-                    }
+                    input.push_str(&serializer::serialize_message(&message));
+
+                    // input.push_str(key);
+                    // input.push_str(" = ");
+                    // input.push_str(&value.main);
+                    // input.push('\n');
+
+                    // for (k, v) in value.attributes.iter() {
+                    //     input.push_str("    .");
+                    //     input.push_str(k);
+                    //     input.push_str(" = ");
+                    //     input.push_str(v);
+                    //     input.push('\n');
+                    // }
 
                     input
                 });
