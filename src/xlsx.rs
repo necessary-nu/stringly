@@ -9,7 +9,7 @@ use fluent_syntax::parser::ParserError;
 use heck::ToSnakeCase;
 use icu::locid::LanguageIdentifier;
 use reqwest::header;
-use rust_xlsxwriter::{Format, Workbook, XlsxError};
+use rust_xlsxwriter::{Format, FormatAlign, Workbook, XlsxError};
 
 use crate::{
     ir::{CIdentifier, Category, Project, TUIdentifier, TranslationUnit, TranslationUnitMap},
@@ -212,7 +212,8 @@ fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<()
     let id_format = Format::new()
         .set_font_name("Roboto Mono")
         .set_font_size(8)
-        .set_text_wrap();
+        .set_text_wrap()
+        .set_align(FormatAlign::Top);
     let mut i = 1u32;
     for (id, attr) in tu {
         let identifier = if let Some(attr) = attr {
@@ -235,7 +236,7 @@ fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<()
 
     // Reset the "cursor"
     col = 2;
-    let text_wrap_format = Format::new().set_text_wrap();
+    let text_wrap_format = Format::new().set_text_wrap().set_align(FormatAlign::Top);
 
     for locale in category.ordered_locale_keys() {
         let map = category.get(&locale).unwrap();
