@@ -90,6 +90,7 @@ pub fn load_project_from_path(path: &Path) -> anyhow::Result<Project> {
 
         let mut category = Category {
             key: category_id.clone(),
+            descriptions: Default::default(),
             name: category.name,
             default_locale: category.default_locale.clone(),
             translation_units: Default::default(),
@@ -207,19 +208,6 @@ impl TryFrom<&TranslationUnitMap> for ast::Resource<String> {
                     };
 
                     input.push_str(&serializer::serialize_message(&message));
-
-                    // input.push_str(key);
-                    // input.push_str(" = ");
-                    // input.push_str(&value.main);
-                    // input.push('\n');
-
-                    // for (k, v) in value.attributes.iter() {
-                    //     input.push_str("    .");
-                    //     input.push_str(k);
-                    //     input.push_str(" = ");
-                    //     input.push_str(v);
-                    //     input.push('\n');
-                    // }
 
                     input
                 });

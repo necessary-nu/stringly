@@ -52,7 +52,7 @@ impl Display for Target {
 
 impl ValueEnum for Target {
     fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Fluent, Self::TypeScript]
+        &[Self::Fluent, Self::TypeScript, Self::Xlsx]
     }
 
     fn to_possible_value(&self) -> Option<PossibleValue> {
@@ -147,20 +147,28 @@ async fn run() -> anyhow::Result<()> {
 
             eprintln!("Generating for format: {}", args.to_format);
 
-            let maybe_tree = match args.to_format {
-                Target::Fluent => stringly::flt::generate(project),
-                Target::TypeScript => stringly::ts::generate(project),
-                Target::Xlsx => {
-                    unimplemented!()
-                }
-            };
-
-            let tree = match maybe_tree {
-                Ok(v) => v,
-                Err(error) => {
-                    eprintln!("{:?}", error);
-                    return Err(error.into());
-                }
+            let tree = match args.to_format {
+                Target::Fluent => match stringly::flt::generate(project) {
+                    Ok(v) => v,
+                    Err(error) => {
+                        eprintln!("{:?}", error);
+                        return Err(error.into());
+                    }
+                },
+                Target::TypeScript => match stringly::ts::generate(project) {
+                    Ok(v) => v,
+                    Err(error) => {
+                        eprintln!("{:?}", error);
+                        return Err(error.into());
+                    }
+                },
+                Target::Xlsx => match stringly::xlsx::generate(project) {
+                    Ok(v) => v,
+                    Err(error) => {
+                        eprintln!("{:?}", error);
+                        return Err(error.into());
+                    }
+                },
             };
 
             tree.write(&args.output_path)?;

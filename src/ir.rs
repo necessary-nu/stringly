@@ -50,6 +50,7 @@ pub struct Category {
     pub key: CIdentifier,
     pub name: String,
     pub default_locale: LanguageIdentifier,
+    pub descriptions: BTreeMap<TUIdentifier, String>,
     pub translation_units: BTreeKeyedSet<LanguageIdentifier, TranslationUnitMap>,
 }
 
@@ -62,6 +63,22 @@ impl Keyed<CIdentifier> for Category {
 impl Category {
     pub fn base_strings(&self) -> &TranslationUnitMap {
         self.translation_units.get(&self.default_locale).unwrap()
+    }
+
+    pub fn ordered_locale_keys(&self) -> impl Iterator<Item = &LanguageIdentifier> {
+        std::iter::once(&self.default_locale)
+            .chain(self.keys().filter(|x| *x != &self.default_locale))
+    }
+
+    pub fn ordered_tu_identity_keys(
+        &self,
+    ) -> impl Iterator<Item = (&TUIdentifier, Option<&TUIdentifier>)> {
+        self.base_strings()
+            .iter()
+            .map(|(k, v)| {
+                std::iter::once((k, None)).chain(v.attributes.keys().map(move |a| (k, Some(a))))
+            })
+            .flatten()
     }
 }
 

@@ -147,7 +147,7 @@ impl Display for BundleGetter {
         msg_args.push_str(" }");
 
         f.write_fmt(format_args!(
-            "return this.#context.resolve(this.#bundles, {msg_args})!\n",
+            "return this.#context.resolve(this.#bundles, {msg_args})\n",
         ))?;
 
         Ok(())
@@ -494,13 +494,13 @@ export class StringsContext<S> {
         const bundle = bundles[locale]
         if (bundle == null) {
           console.error("Bundle was not found for locale", locale)
-          return null
+          return id
         }
 
         const message = bundle.getMessage(id)
         if (message == null) {
           console.error("Message was not found for locale", locale, id)
-          return null
+          return id
         }
 
         let pattern
@@ -513,7 +513,7 @@ export class StringsContext<S> {
 
         if (pattern == null) {
           console.error("Pattern was not found for locale", locale, id)
-          return null
+          return id
         }
 
         return bundle.formatPattern(pattern, args)

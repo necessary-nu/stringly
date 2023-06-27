@@ -1,16 +1,19 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     io::{Read, Seek},
     str::FromStr,
 };
 
 use calamine::{Reader, Xlsx};
+use fluent_syntax::parser::ParserError;
 use heck::ToSnakeCase;
 use icu::locid::LanguageIdentifier;
+use reqwest::header;
+use rust_xlsxwriter::{Format, Workbook, XlsxError};
 
 use crate::{
     ir::{CIdentifier, Category, Project, TUIdentifier, TranslationUnit, TranslationUnitMap},
-    BTreeKeyedSet,
+    BTreeKeyedSet, PathNode,
 };
 
 impl<T> TryFrom<Xlsx<T>> for Project
@@ -145,6 +148,7 @@ where
 
         categories.insert(Category {
             key: CIdentifier::try_from(sheet.to_snake_case()).unwrap(),
+            descriptions: Default::default(),
             name: sheet.to_string(),
             default_locale: base_lang_code.clone(),
             translation_units: languages,
@@ -156,4 +160,116 @@ where
         ..Default::default()
     };
     Ok(project)
+}
+
+const COL_WIDTH: f64 = 30.0;
+
+fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<(), XlsxError> {
+    let sheet = workbook.add_worksheet();
+    sheet.set_name(&category.name)?;
+
+    let mut col = 0u16;
+    let mut row = 0u32;
+
+    let header_format = Format::new().set_bold().set_font_size(8).set_text_wrap();
+    sheet.write_string_with_format(row, col, "Identifier", &header_format)?;
+    sheet.set_column_width(col, COL_WIDTH)?;
+    col += 1;
+    sheet.write_string_with_format(row, col, "Description", &header_format)?;
+    sheet.set_column_width(col, COL_WIDTH)?;
+    col += 1;
+
+    let autonym = category.default_locale.to_string();
+    let autonym = iso639::autonym::get(&autonym)
+        .and_then(|x| x.autonym)
+        .unwrap_or(&*autonym);
+    let title = format!("{} ({})", autonym, category.default_locale);
+    sheet.write_string_with_format(row, col, title, &header_format)?;
+    sheet.set_column_width(col, COL_WIDTH)?;
+    col += 1;
+
+    for map in category.values() {
+        if map.locale == category.default_locale {
+            continue;
+        }
+        let autonym = map.locale.to_string();
+        let autonym = iso639::autonym::get(&autonym)
+            .and_then(|x| x.autonym)
+            .unwrap_or(&*autonym);
+        let title = format!("{} ({})", autonym, map.locale);
+        sheet.write_string_with_format(row, col, title, &header_format)?;
+        sheet.set_column_width(col, COL_WIDTH)?;
+        col += 1;
+    }
+
+    sheet.set_freeze_panes(1, 2)?;
+    row += 1;
+    col = 0;
+
+    let tu = category.ordered_tu_identity_keys();
+    let mut index_map = HashMap::new();
+
+    let id_format = Format::new()
+        .set_font_name("Roboto Mono")
+        .set_font_size(8)
+        .set_text_wrap();
+    let mut i = 1u32;
+    for (id, attr) in tu {
+        let identifier = if let Some(attr) = attr {
+            format!("{}__{}", id, attr)
+        } else {
+            id.to_string()
+        };
+
+        sheet.write_string_with_format(row, col, identifier, &id_format)?;
+        if let Some(desc) = category.descriptions.get(id) {
+            col += 1;
+            sheet.write_string_with_format(row, col, desc, &id_format)?;
+        }
+        col = 0;
+        row += 1;
+
+        index_map.insert((id, attr), i);
+        i += 1;
+    }
+
+    // Reset the "cursor"
+    col = 2;
+    let text_wrap_format = Format::new().set_text_wrap();
+
+    for locale in category.ordered_locale_keys() {
+        let map = category.get(&locale).unwrap();
+        for (id, tu) in map.iter() {
+            let index = *index_map.get(&(id, None)).unwrap();
+            sheet.write_string_with_format(index, col, &tu.main, &text_wrap_format)?;
+
+            for (attr, v) in tu.attributes.iter() {
+                let index = *index_map.get(&(id, Some(attr))).unwrap();
+                sheet.write_string_with_format(index, col, v, &text_wrap_format)?;
+            }
+        }
+        col += 1;
+    }
+
+    Ok(())
+}
+
+pub fn generate(project: Project) -> Result<PathNode, XlsxError> {
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+
+    if let Some(core) = project
+        .categories
+        .get(&CIdentifier::try_from("core").unwrap())
+    {
+        generate_worksheet(&mut workbook, core)?;
+    }
+
+    for category in project.categories.values() {
+        if category.name == "Core" {
+            continue;
+        }
+        generate_worksheet(&mut workbook, category)?;
+    }
+
+    Ok(PathNode::File(workbook.save_to_buffer()?))
 }
