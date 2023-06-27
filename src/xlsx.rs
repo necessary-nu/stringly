@@ -171,12 +171,25 @@ fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<()
     let mut col = 0u16;
     let mut row = 0u32;
 
-    let header_format = Format::new().set_bold().set_font_size(8).set_text_wrap();
+    let header_format = Format::new()
+        .set_bold()
+        .set_font_size(8)
+        .set_text_wrap()
+        .set_align(FormatAlign::VerticalCenter);
+    let id_format = Format::new()
+        .set_font_name("Roboto Mono")
+        .set_font_size(8)
+        .set_text_wrap()
+        .set_align(FormatAlign::VerticalCenter);
+    let text_wrap_format = Format::new().set_text_wrap().set_align(FormatAlign::Top);
+
     sheet.write_string_with_format(row, col, "Identifier", &header_format)?;
     sheet.set_column_width(col, COL_WIDTH)?;
+    sheet.set_column_format(col, &id_format)?;
     col += 1;
     sheet.write_string_with_format(row, col, "Description", &header_format)?;
     sheet.set_column_width(col, COL_WIDTH)?;
+    sheet.set_column_format(col, &text_wrap_format)?;
     col += 1;
 
     let autonym = category.default_locale.to_string();
@@ -186,6 +199,7 @@ fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<()
     let title = format!("{} ({})", autonym, category.default_locale);
     sheet.write_string_with_format(row, col, title, &header_format)?;
     sheet.set_column_width(col, COL_WIDTH)?;
+    sheet.set_column_format(col, &text_wrap_format)?;
     col += 1;
 
     for map in category.values() {
@@ -209,11 +223,6 @@ fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<()
     let tu = category.ordered_tu_identity_keys();
     let mut index_map = HashMap::new();
 
-    let id_format = Format::new()
-        .set_font_name("Roboto Mono")
-        .set_font_size(8)
-        .set_text_wrap()
-        .set_align(FormatAlign::Top);
     let mut i = 1u32;
     for (id, attr) in tu {
         let identifier = if let Some(attr) = attr {
@@ -236,7 +245,6 @@ fn generate_worksheet(workbook: &mut Workbook, category: &Category) -> Result<()
 
     // Reset the "cursor"
     col = 2;
-    let text_wrap_format = Format::new().set_text_wrap().set_align(FormatAlign::Top);
 
     for locale in category.ordered_locale_keys() {
         let map = category.get(&locale).unwrap();
