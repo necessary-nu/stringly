@@ -117,6 +117,7 @@ impl Display for Raw {
 #[derive(Debug, Clone)]
 struct BundleGetter {
     raw_id: String,
+    attr: Option<String>,
     args: Vec<ObjArg>,
 }
 
@@ -129,17 +130,26 @@ impl Display for BundleGetter {
             .collect::<Vec<_>>()
             .join(", ");
 
-        if args.is_empty() {
-            f.write_fmt(format_args!(
-                "return this.#context.resolve(this.#bundles, \"{}\")\n",
-                self.raw_id
-            ))?;
-        } else {
-            f.write_fmt(format_args!(
-                "return this.#context.resolve(this.#bundles, \"{}\", {{ {args} }})\n",
-                self.raw_id
-            ))?;
+        let mut msg_args = String::from("{ id: \"");
+        msg_args.push_str(&self.raw_id);
+        msg_args.push('"');
+
+        if let Some(attr) = &self.attr {
+            msg_args.push_str(", attr: \"");
+            msg_args.push_str(attr);
+            msg_args.push('"');
         }
+
+        if !args.is_empty() {
+            msg_args.push_str(&format!(", args: {{ {args} }}"));
+        }
+
+        msg_args.push_str(" }");
+
+        f.write_fmt(format_args!(
+            "return this.#context.resolve(this.#bundles, {msg_args})\n",
+        ))?;
+
         Ok(())
     }
 }
@@ -258,18 +268,17 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
                 fluent_syntax::ast::Entry::Message(x) if x.value.is_some() => {
                     let name = x.id.name;
 
-                    Some(
-                        std::iter::once((name.clone(), x.value.unwrap())).chain(
-                            x.attributes
-                                .into_iter()
-                                .map(move |y| (format!("{}_{}", &name, y.id.name), y.value)),
-                        ),
-                    )
+                    let items = std::iter::once((name.clone(), None, x.value.unwrap())).chain(
+                        x.attributes
+                            .into_iter()
+                            .map(move |y| (name.clone(), Some(y.id.name.to_string()), y.value)),
+                    );
+                    Some(items)
                 }
                 _ => None,
             })
             .flatten()
-            .map(|(name, value)| {
+            .map(|(name, attr, value)| {
                 let vars = value
                     .elements
                     .iter()
@@ -291,17 +300,24 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
                     })
                     .collect::<Vec<_>>();
 
+                let ident = if let Some(attr) = attr.as_deref() {
+                    Ident(format!("{name}__{attr}").to_lower_camel_case())
+                } else {
+                    Ident(format!("{name}").to_lower_camel_case())
+                };
+
                 if vars.is_empty() {
                     Ast::Getter(Getter {
-                        ident: Ident(name.to_lower_camel_case()),
+                        ident,
                         body: Body::BundleGetter(BundleGetter {
                             raw_id: name,
+                            attr,
                             args: vec![],
                         }),
                     })
                 } else {
                     Ast::Method(Method {
-                        ident: Ident(name.to_lower_camel_case()),
+                        ident,
                         arguments: vars
                             .iter()
                             .map(|(camel, _real)| Param {
@@ -311,6 +327,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
                             .collect(),
                         body: Body::BundleGetter(BundleGetter {
                             raw_id: name,
+                            attr,
                             args: vars
                                 .iter()
                                 .map(|(camel, real)| ObjArg {
@@ -383,10 +400,17 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
 
     let class_wrapper = format!(
         "export class Strings {{
+    #context: Context
+
     {getters}
 
     constructor(context: Context) {{
         {class_fields}
+        this.#context = context
+    }}
+
+    clone(): Strings {{
+      return new Strings(this.#context)
     }}
 }}
 "
@@ -417,79 +441,106 @@ export const strings: Strings = context.strings"#
 
 const UTIL_TS: &str = r#"import { FluentBundle, FluentResource } from "@fluent/bundle"
 
+export type MessageRequest = {
+  id: string
+  attr?: string
+  args?: Record<string, string>
+}
+
 export type Context = {
-    resolve: (bundles: Record<string, FluentBundle>, id: string, args?: Record<string, string>) => string | null
+  resolve: (
+    bundles: Record<string, FluentBundle>,
+    { id, attr, args }: MessageRequest
+  ) => string | null
 }
 
 export function flt(locale: string) {
-    return (input: TemplateStringsArray) => {
-        const resource = new FluentResource(input.raw[0])
-        const bundle = new FluentBundle(locale)
-        bundle.addResource(resource)
-        return bundle
-    }
+  return (input: TemplateStringsArray) => {
+    const resource = new FluentResource(input.raw[0])
+    const bundle = new FluentBundle(locale)
+    bundle.addResource(resource)
+    return bundle
+  }
 }
 
 interface StringsConstructor<S> {
-    new (context: Context): S;
+  new (context: Context): S
 }
 
 export class StringsContext<S> {
-    #observers: Array<(newLanguageIdentifier: string) => void>
-    #currentLanguageIdentifier: string;
-    #strings: S
+  #observers: Array<(newLocale: string) => void>
+  #currentLocale: string
+  #strings: S
 
-    get locale(): string {
-        return this.#currentLanguageIdentifier
-    }
-    
-    constructor(type: StringsConstructor<S>, locale: string, observers: Array<(newLanguageIdentifier: string) => void> = []) {
-        const self = this
-        this.#observers = observers
-        this.#currentLanguageIdentifier = locale
-        this.#strings = new type({
-            resolve(bundles: Record<string, FluentBundle>, id: string, args?: Record<string, string>) {
-                const locale = self.#currentLanguageIdentifier
-                
-                const bundle = bundles[locale]
-                if (bundle == null) {
-                    return null
-                }
+  get locale(): string {
+    return this.#currentLocale
+  }
 
-                const message = bundle.getMessage(id)
-                if (message == null) {
-                    return null
-                }
+  constructor(
+    type: StringsConstructor<S>,
+    locale: string,
+    observers: Array<(newLocale: string) => void> = []
+  ) {
+    const self = this
+    this.#observers = observers
+    this.#currentLocale = locale
+    this.#strings = new type({
+      resolve(
+        bundles: Record<string, FluentBundle>,
+        { id, attr, args }: MessageRequest
+      ) {
+        const locale = self.#currentLocale
 
-                if (message.value != null) {
-                    return bundle.formatPattern(message.value, args)
-                }
-
-                return null
-            }
-        })
-    }
-
-    addObserver(observer: (newLanguageIdentifier: string) => void) {
-        this.#observers.push(observer)
-    }
-
-    removeObserver(observer: (newLanguageIdentifier: string) => void) {
-        const index = this.#observers.indexOf(observer)
-        if (index > -1) {
-            this.#observers.splice(index, 1)
+        const bundle = bundles[locale]
+        if (bundle == null) {
+          console.error("Bundle was not found for locale", locale)
+          return null
         }
-    }
 
-    setLanguageIdentifier(newLanguageIdentifier: string) {
-        this.#currentLanguageIdentifier = newLanguageIdentifier;
-        for (const observer of this.#observers) {
-            observer(newLanguageIdentifier)
+        const message = bundle.getMessage(id)
+        if (message == null) {
+          console.error("Message was not found for locale", locale, id)
+          return null
         }
-    }
 
-    get strings() {
-        return this.#strings
+        let pattern
+
+        if (attr != null) {
+          pattern = message.attributes[attr]
+        } else {
+          pattern = message.value
+        }
+
+        if (pattern == null) {
+          console.error("Pattern was not found for locale", locale, id)
+          return null
+        }
+
+        return bundle.formatPattern(pattern, args)
+      },
+    })
+  }
+
+  addObserver(observer: (newLocale: string) => void) {
+    this.#observers.push(observer)
+  }
+
+  removeObserver(observer: (newLocale: string) => void) {
+    const index = this.#observers.indexOf(observer)
+    if (index > -1) {
+      this.#observers.splice(index, 1)
     }
+  }
+
+  setLocale(newLocale: string) {
+    this.#currentLocale = newLocale
+    for (const observer of this.#observers) {
+      observer(newLocale)
+    }
+  }
+
+  get strings() {
+    return this.#strings
+  }
 }
 "#;
