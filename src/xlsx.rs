@@ -6,7 +6,7 @@ use std::{
 
 use calamine::{Reader, Xlsx};
 use heck::ToSnakeCase;
-use icu::locid::Locale;
+use icu::locid::LanguageIdentifier;
 
 use crate::{
     ir::{CIdentifier, Category, Project, TUIdentifier, TranslationUnit, TranslationUnitMap},
@@ -36,9 +36,7 @@ where
         .filter(|x| *x != "TODO")
         .collect::<Vec<_>>();
 
-    let mut categories: BTreeKeyedSet<_, Category> = BTreeKeyedSet::new(|category: &Category| {
-        CIdentifier::try_from(category.name.to_snake_case()).unwrap()
-    });
+    let mut categories: BTreeKeyedSet<_, Category> = BTreeKeyedSet::new();
 
     for sheet in sheets {
         let range = workbook.worksheet_range(&sheet).unwrap()?;
@@ -65,7 +63,7 @@ where
                     x.trim_start_matches('(').trim_end_matches(')').to_string(),
                 )
             })
-            .map(|(i, x)| Locale::from_str(&x).map(|x| (i, x)))
+            .map(|(i, x)| LanguageIdentifier::from_str(&x).map(|x| (i, x)))
             .collect::<Result<Vec<_>, _>>()?;
 
         let Some((base_lang_idx, base_lang_code)) = lang_cols.first() else {
@@ -129,9 +127,10 @@ where
                         }
                     };
 
-                    strings.attributes.insert(meta_key.to_string(), col_str);
+                    strings.attributes.insert(meta_key.clone(), col_str);
                 } else {
                     let data = TranslationUnit {
+                        key: id.clone(),
                         main: col_str.to_string(),
                         attributes: Default::default(),
                     };
@@ -139,18 +138,22 @@ where
                         .get_mut(col_code)
                         .unwrap()
                         .translation_units
-                        .insert(id.clone(), data);
+                        .insert(data);
                 }
             }
         }
 
         categories.insert(Category {
+            key: CIdentifier::try_from(sheet.to_snake_case()).unwrap(),
             name: sheet.to_string(),
-            base_locale: base_lang_code.clone(),
+            default_locale: base_lang_code.clone(),
             translation_units: languages,
         });
     }
 
-    let project = Project { categories };
+    let project = Project {
+        categories,
+        ..Default::default()
+    };
     Ok(project)
 }

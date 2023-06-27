@@ -10,13 +10,25 @@ use std::{
     str::FromStr,
 };
 
-use icu::locid::Locale;
+use icu::locid::LanguageIdentifier;
 
-use crate::BTreeKeyedSet;
+use crate::{BTreeKeyedSet, Keyed};
 
 #[derive(Debug, Clone)]
 pub struct Project {
+    pub name: String,
+    pub default_locale: Option<LanguageIdentifier>,
     pub categories: BTreeKeyedSet<CIdentifier, Category>,
+}
+
+impl Default for Project {
+    fn default() -> Self {
+        Self {
+            categories: BTreeKeyedSet::new(),
+            name: "Untitled".to_string(),
+            default_locale: None,
+        }
+    }
 }
 
 impl Deref for Project {
@@ -35,19 +47,26 @@ impl DerefMut for Project {
 
 #[derive(Debug, Clone)]
 pub struct Category {
+    pub key: CIdentifier,
     pub name: String,
-    pub base_locale: Locale,
-    pub translation_units: BTreeKeyedSet<Locale, TranslationUnitMap>,
+    pub default_locale: LanguageIdentifier,
+    pub translation_units: BTreeKeyedSet<LanguageIdentifier, TranslationUnitMap>,
+}
+
+impl Keyed<CIdentifier> for Category {
+    fn key(&self) -> CIdentifier {
+        self.key.clone()
+    }
 }
 
 impl Category {
     pub fn base_strings(&self) -> &TranslationUnitMap {
-        self.translation_units.get(&self.base_locale).unwrap()
+        self.translation_units.get(&self.default_locale).unwrap()
     }
 }
 
 impl Deref for Category {
-    type Target = BTreeKeyedSet<Locale, TranslationUnitMap>;
+    type Target = BTreeKeyedSet<LanguageIdentifier, TranslationUnitMap>;
 
     fn deref(&self) -> &Self::Target {
         &self.translation_units
@@ -62,8 +81,23 @@ impl DerefMut for Category {
 
 #[derive(Debug, Clone)]
 pub struct TranslationUnitMap {
-    pub locale: Locale,
-    pub translation_units: BTreeMap<TUIdentifier, TranslationUnit>,
+    pub locale: LanguageIdentifier,
+    pub translation_units: BTreeKeyedSet<TUIdentifier, TranslationUnit>,
+}
+
+impl TranslationUnitMap {
+    pub fn new(locale: LanguageIdentifier) -> Self {
+        Self {
+            locale,
+            translation_units: Default::default(),
+        }
+    }
+}
+
+impl Keyed<LanguageIdentifier> for TranslationUnitMap {
+    fn key(&self) -> LanguageIdentifier {
+        self.locale.clone()
+    }
 }
 
 impl Eq for TranslationUnitMap {}
@@ -106,8 +140,15 @@ impl DerefMut for TranslationUnitMap {
 
 #[derive(Debug, Clone)]
 pub struct TranslationUnit {
+    pub key: TUIdentifier,
     pub main: String,
-    pub attributes: BTreeMap<String, String>,
+    pub attributes: BTreeMap<TUIdentifier, String>,
+}
+
+impl Keyed<TUIdentifier> for TranslationUnit {
+    fn key(&self) -> TUIdentifier {
+        self.key.clone()
+    }
 }
 
 // TODO: validate the identifier is a valid FLT identifier plus optional attribute
@@ -152,6 +193,42 @@ impl TryFrom<&str> for TUIdentifier {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         value.to_string().try_into()
+    }
+}
+
+impl<S: AsRef<str>> From<fluent_syntax::ast::Term<S>> for TUIdentifier {
+    fn from(value: fluent_syntax::ast::Term<S>) -> Self {
+        TUIdentifier(format!("-{}", value.id.name.as_ref()))
+    }
+}
+
+impl<S: AsRef<str>> From<&fluent_syntax::ast::Term<S>> for TUIdentifier {
+    fn from(value: &fluent_syntax::ast::Term<S>) -> Self {
+        TUIdentifier(format!("-{}", value.id.name.as_ref()))
+    }
+}
+
+impl<S: AsRef<str>> From<fluent_syntax::ast::Message<S>> for TUIdentifier {
+    fn from(value: fluent_syntax::ast::Message<S>) -> Self {
+        TUIdentifier(value.id.name.as_ref().to_string())
+    }
+}
+
+impl<S: AsRef<str>> From<&fluent_syntax::ast::Message<S>> for TUIdentifier {
+    fn from(value: &fluent_syntax::ast::Message<S>) -> Self {
+        TUIdentifier(value.id.name.as_ref().to_string())
+    }
+}
+
+impl<S: AsRef<str>> From<fluent_syntax::ast::Attribute<S>> for TUIdentifier {
+    fn from(value: fluent_syntax::ast::Attribute<S>) -> Self {
+        TUIdentifier(value.id.name.as_ref().to_string())
+    }
+}
+
+impl<S: AsRef<str>> From<&fluent_syntax::ast::Attribute<S>> for TUIdentifier {
+    fn from(value: &fluent_syntax::ast::Attribute<S>) -> Self {
+        TUIdentifier(value.id.name.as_ref().to_string())
     }
 }
 

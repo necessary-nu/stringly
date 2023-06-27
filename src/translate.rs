@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::OnceLock};
 
-use icu::locid::Locale;
+use icu::locid::LanguageIdentifier;
 use regex::{Captures, Regex};
 use serde::Deserialize;
 use serde_json::json;
@@ -43,14 +43,14 @@ pub struct KeyedTranslation<'a> {
 async fn translate<'a>(
     api_key: &str,
     segments: &'a [KeyedString],
-    source_locale: &Locale,
-    target_locale: &Locale,
+    source_locale: &LanguageIdentifier,
+    target_locale: &LanguageIdentifier,
 ) -> Result<Vec<KeyedTranslation<'a>>, reqwest::Error> {
     let client = reqwest::Client::builder().build()?;
     let mut translated = vec![];
 
-    let source_language = source_locale.id.language.to_string();
-    let target_language = target_locale.id.language.to_string();
+    let source_language = source_locale.language.to_string();
+    let target_language = target_locale.language.to_string();
 
     for q in segments.chunks(128) {
         let response = client
@@ -101,14 +101,14 @@ fn convert_from_html(text: &str) -> String {
 
 pub async fn process(
     input: &Project,
-    target_language: &Locale,
+    target_language: &LanguageIdentifier,
     google_api_key: &str,
-) -> anyhow::Result<BTreeMap<String, PathNode>> {
+) -> anyhow::Result<PathNode> {
     let mut files = BTreeMap::new();
 
     for (k, v) in input.categories.iter() {
         let mut subfiles = BTreeMap::new();
-        let source_language = &v.base_locale;
+        let source_language = &v.default_locale;
 
         let strings = v
             .base_strings()
@@ -135,7 +135,7 @@ pub async fn process(
 
         let mut out = TranslationUnitMap {
             locale: target_language.clone(),
-            translation_units: BTreeMap::new(),
+            translation_units: Default::default(),
         };
 
         for x in strings.into_iter() {
@@ -148,16 +148,13 @@ pub async fn process(
 
             if let Some(meta_id) = meta_id {
                 let map = out.translation_units.get_mut(&base_id).unwrap();
-                map.attributes
-                    .insert(meta_id.to_string(), convert_from_html(&x.target));
+                map.attributes.insert(meta_id, convert_from_html(&x.target));
             } else {
-                out.translation_units.insert(
-                    base_id.clone(),
-                    TranslationUnit {
-                        main: convert_from_html(&x.target),
-                        attributes: Default::default(),
-                    },
-                );
+                out.translation_units.insert(TranslationUnit {
+                    key: base_id.clone(),
+                    main: convert_from_html(&x.target),
+                    attributes: Default::default(),
+                });
             }
         }
 
@@ -170,7 +167,7 @@ pub async fn process(
         files.insert(k.to_string(), PathNode::Directory(subfiles));
     }
 
-    Ok(files)
+    Ok(PathNode::Directory(files))
 }
 
 #[cfg(test)]

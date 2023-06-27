@@ -1,9 +1,10 @@
 use std::{collections::BTreeMap, fmt::Display};
 
+use fluent_syntax::parser::ParserError;
 use heck::{ToLowerCamelCase, ToPascalCase, ToShoutySnakeCase};
-use icu::locid::Locale;
+use icu::locid::LanguageIdentifier;
 
-use crate::{flt::ParseError, ir::Project, PathNode};
+use crate::{ir::Project, PathNode};
 
 #[derive(Debug, Clone)]
 struct Interface {
@@ -208,7 +209,10 @@ impl Display for Ast {
     }
 }
 
-fn dump_flt_inline(lang: &Locale, res: &fluent_syntax::ast::Resource<String>) -> String {
+fn dump_flt_inline(
+    lang: &LanguageIdentifier,
+    res: &fluent_syntax::ast::Resource<String>,
+) -> String {
     format!(
         "const {} = flt(\"{lang}\")`\n{}`\n",
         lang.to_string().to_shouty_snake_case(),
@@ -216,7 +220,7 @@ fn dump_flt_inline(lang: &Locale, res: &fluent_syntax::ast::Resource<String>) ->
     )
 }
 
-fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a Locale>) -> String {
+fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a LanguageIdentifier>) -> String {
     let inner = langs
         .map(|x| {
             format!(
@@ -230,7 +234,7 @@ fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a Locale>) -> String 
     format!("#bundles = {{\n{}\n}}\n", inner)
 }
 
-pub fn generate(input: Project) -> Result<BTreeMap<String, PathNode>, ParseError> {
+pub fn generate(input: Project) -> Result<PathNode, ParserError> {
     let mut bundle_files = BTreeMap::new();
     let mut index_bundles = vec![];
 
@@ -408,7 +412,7 @@ export const strings: Strings = context.strings"#
         PathNode::File(index_file.into_bytes()),
     );
 
-    Ok(files)
+    Ok(PathNode::Directory(files))
 }
 
 const UTIL_TS: &str = r#"import { FluentBundle, FluentResource } from "@fluent/bundle"
@@ -431,21 +435,21 @@ interface StringsConstructor<S> {
 }
 
 export class StringsContext<S> {
-    #observers: Array<(newLocale: string) => void>
-    #currentLocale: string;
+    #observers: Array<(newLanguageIdentifier: string) => void>
+    #currentLanguageIdentifier: string;
     #strings: S
 
     get locale(): string {
-        return this.#currentLocale
+        return this.#currentLanguageIdentifier
     }
     
-    constructor(type: StringsConstructor<S>, locale: string, observers: Array<(newLocale: string) => void> = []) {
+    constructor(type: StringsConstructor<S>, locale: string, observers: Array<(newLanguageIdentifier: string) => void> = []) {
         const self = this
         this.#observers = observers
-        this.#currentLocale = locale
+        this.#currentLanguageIdentifier = locale
         this.#strings = new type({
             resolve(bundles: Record<string, FluentBundle>, id: string, args?: Record<string, string>) {
-                const locale = self.#currentLocale
+                const locale = self.#currentLanguageIdentifier
                 
                 const bundle = bundles[locale]
                 if (bundle == null) {
@@ -466,21 +470,21 @@ export class StringsContext<S> {
         })
     }
 
-    addObserver(observer: (newLocale: string) => void) {
+    addObserver(observer: (newLanguageIdentifier: string) => void) {
         this.#observers.push(observer)
     }
 
-    removeObserver(observer: (newLocale: string) => void) {
+    removeObserver(observer: (newLanguageIdentifier: string) => void) {
         const index = this.#observers.indexOf(observer)
         if (index > -1) {
             this.#observers.splice(index, 1)
         }
     }
 
-    setLocale(newLocale: string) {
-        this.#currentLocale = newLocale;
+    setLanguageIdentifier(newLanguageIdentifier: string) {
+        this.#currentLanguageIdentifier = newLanguageIdentifier;
         for (const observer of this.#observers) {
-            observer(newLocale)
+            observer(newLanguageIdentifier)
         }
     }
 
