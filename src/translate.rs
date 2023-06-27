@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+use html_escape::decode_html_entities;
 use icu::locid::LanguageIdentifier;
 use regex::{Captures, Regex};
 use serde::Deserialize;
@@ -91,8 +92,8 @@ fn convert_to_html(text: &str) -> String {
 
 fn convert_from_html(text: &str) -> String {
     let regex = FROM_HTML_REGEX.get_or_init(|| Regex::new(r#"<a id="(.+?)">.+?</a>"#).unwrap());
-    regex
-        .replace_all(text, |c: &Captures| format!("{{ {} }}", &c[1]))
+
+    decode_html_entities(&regex.replace_all(text, |c: &Captures| format!("{{ {} }}", &c[1])))
         .to_string()
 }
 

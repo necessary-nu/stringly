@@ -1,4 +1,7 @@
-use std::{fmt::Display, path::PathBuf};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 use calamine::Xlsx;
 use clap::{builder::PossibleValue, Parser, ValueEnum};
@@ -125,6 +128,45 @@ async fn main() -> anyhow::Result<()> {
     run().await
 }
 
+fn load_project(from_format: FromFormat, input_path: &Path) -> anyhow::Result<Project> {
+    Ok(match from_format {
+        FromFormat::Fluent => load_project_from_path(input_path)?,
+        FromFormat::Xlsx => {
+            let xlsx: Xlsx<_> = calamine::open_workbook(input_path)?;
+            Project::try_from(xlsx)?
+        }
+    })
+}
+
+fn generate(to_format: Target, project: Project, output_path: &Path) -> anyhow::Result<()> {
+    let tree = match to_format {
+        Target::Fluent => match stringly::flt::generate(project) {
+            Ok(v) => v,
+            Err(error) => {
+                eprintln!("{:?}", error);
+                return Err(error.into());
+            }
+        },
+        Target::TypeScript => match stringly::ts::generate(project) {
+            Ok(v) => v,
+            Err(error) => {
+                eprintln!("{:?}", error);
+                return Err(error.into());
+            }
+        },
+        Target::Xlsx => match stringly::xlsx::generate(project) {
+            Ok(v) => v,
+            Err(error) => {
+                eprintln!("{:?}", error);
+                return Err(error.into());
+            }
+        },
+    };
+
+    tree.write(output_path)?;
+    Ok(())
+}
+
 async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -136,77 +178,19 @@ async fn run() -> anyhow::Result<()> {
     match command {
         Command::Generate(args) => {
             eprintln!("Loading from format: {}", args.from_format);
-
-            let project = match args.from_format {
-                FromFormat::Fluent => load_project_from_path(&args.input_path)?,
-                FromFormat::Xlsx => {
-                    let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_path)?;
-                    Project::try_from(xlsx)?
-                }
-            };
+            let project = load_project(args.from_format, &args.input_path)?;
 
             eprintln!("Generating for format: {}", args.to_format);
-
-            let tree = match args.to_format {
-                Target::Fluent => match stringly::flt::generate(project) {
-                    Ok(v) => v,
-                    Err(error) => {
-                        eprintln!("{:?}", error);
-                        return Err(error.into());
-                    }
-                },
-                Target::TypeScript => match stringly::ts::generate(project) {
-                    Ok(v) => v,
-                    Err(error) => {
-                        eprintln!("{:?}", error);
-                        return Err(error.into());
-                    }
-                },
-                Target::Xlsx => match stringly::xlsx::generate(project) {
-                    Ok(v) => v,
-                    Err(error) => {
-                        eprintln!("{:?}", error);
-                        return Err(error.into());
-                    }
-                },
-            };
-
-            tree.write(&args.output_path)?;
+            generate(args.to_format, project, &args.output_path)?;
             Ok(())
         }
         Command::Translate(args) => {
             eprintln!("Loading from format: {}", args.from_format);
-
-            let project = match args.from_format {
-                FromFormat::Fluent => load_project_from_path(&args.input_path)?,
-                FromFormat::Xlsx => {
-                    let xlsx: Xlsx<_> = calamine::open_workbook(&args.input_path)?;
-                    Project::try_from(xlsx)?
-                }
-            };
-
+            let project = load_project(args.from_format, &args.input_path)?;
             let project =
                 translate::process(&project, &args.target_language, &args.google_api_key).await?;
-
             eprintln!("Generating for format: {}", args.to_format);
-
-            let maybe_tree = match args.to_format {
-                Target::Fluent => stringly::flt::generate(project),
-                Target::TypeScript => stringly::ts::generate(project),
-                Target::Xlsx => {
-                    unimplemented!()
-                }
-            };
-
-            let tree = match maybe_tree {
-                Ok(v) => v,
-                Err(error) => {
-                    eprintln!("{:?}", error);
-                    return Err(error.into());
-                }
-            };
-
-            tree.write(&args.output_path)?;
+            generate(args.to_format, project, &args.output_path)?;
             Ok(())
         }
     }
