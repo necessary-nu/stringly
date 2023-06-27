@@ -147,7 +147,7 @@ impl Display for BundleGetter {
         msg_args.push_str(" }");
 
         f.write_fmt(format_args!(
-            "return this.#context.resolve(this.#bundles, {msg_args})\n",
+            "return this.#context.resolve(this.#bundles, {msg_args})!\n",
         ))?;
 
         Ok(())
