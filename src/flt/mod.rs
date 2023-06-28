@@ -12,6 +12,7 @@ use crate::{
 mod serializer;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 struct ProjectConfig {
     name: String,
     default_locale: Option<LanguageIdentifier>,
@@ -24,6 +25,7 @@ fn default_locale() -> LanguageIdentifier {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 struct CategoryConfig {
     name: String,
     #[serde(default = "default_locale")]
