@@ -222,16 +222,25 @@ impl Display for Ast {
 fn dump_flt_inline(
     lang: &LanguageIdentifier,
     res: &fluent_syntax::ast::Resource<String>,
+    is_core: bool,
 ) -> String {
-    format!(
-        "const {} = flt(\"{lang}\")`\n{}`\n",
-        lang.to_string().to_shouty_snake_case(),
-        fluent_syntax::serializer::serialize(res)
-    )
+    if is_core {
+        format!(
+            "const {} = flt(\"{lang}\")`\n{}`\n",
+            lang.to_string().to_shouty_snake_case(),
+            fluent_syntax::serializer::serialize(res)
+        )
+    } else {
+        format!(
+            "const {} = flt(\"{lang}\", coreBundles)`\n{}`\n",
+            lang.to_string().to_shouty_snake_case(),
+            fluent_syntax::serializer::serialize(res)
+        )
+    }
 }
 
 fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a LanguageIdentifier>) -> String {
-    let inner = langs
+    langs
         .map(|x| {
             format!(
                 "{:?}: {}",
@@ -240,8 +249,7 @@ fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a LanguageIdentifier>
             )
         })
         .collect::<Vec<_>>()
-        .join(", ");
-    format!("#bundles = {{\n{}\n}}\n", inner)
+        .join(", ")
 }
 
 pub fn generate(input: Project) -> Result<PathNode, ParserError> {
@@ -249,13 +257,14 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
     let mut index_bundles = vec![];
 
     for (module_name, project) in input.categories.into_iter() {
+        let is_core = &*module_name == "core";
         let mut flts = Vec::new();
 
         for (_, m) in project.translation_units.iter() {
             let lang = m.locale.clone();
             let resource: fluent_syntax::ast::Resource<String> = m.try_into()?;
 
-            flts.push(Ast::Body(Body::Raw(Raw(dump_flt_inline(&lang, &resource)))));
+            flts.push(Ast::Body(Body::Raw(Raw(dump_flt_inline(&lang, &resource, is_core)))));
         }
 
         let strings = project.base_strings();
@@ -340,14 +349,25 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
                 }
             });
 
+        let core_import = if is_core {
+            ""
+        } else {
+            "import { bundles as coreBundles } from \"./core\"\n"
+        };
         let header: &str = "import { Context, flt } from \"../util\"\n\n";
+
+        let bundles = if is_core {
+            "#bundles = bundles\n".to_string()
+        } else {
+            format!("#bundles = {{\n{}\n}}\n",  dump_flt_resource_map(project.translation_units.keys()))
+        };
 
         let ts_ast = Class {
             ident: Ident(module_name.to_pascal_case()),
             exported: true,
             implements: vec![],
             body: [Ast::Body(Body::Raw(Raw(
-                dump_flt_resource_map(project.translation_units.keys()),
+                bundles
             ))), Ast::Body(Body::Raw(Raw(
                 "#context: Context\nconstructor(context: Context) { this.#context = context; }\n"
                     .into(),
@@ -357,13 +377,20 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
             .collect(),
         };
 
-        let module = Module {
-            body: [Ast::Body(Body::Raw(Raw(header.into())))]
+        let mut module = Module {
+            body: [Ast::Body(Body::Raw(Raw(format!("{core_import}{header}"))))]
                 .into_iter()
                 .chain(flts.into_iter())
                 .chain(std::iter::once(Ast::Class(ts_ast)))
                 .collect(),
         };
+
+        // Hack for core
+        if is_core {
+            let x = format!("export const bundles = Object.freeze({{ {} }})\n\n", 
+                dump_flt_resource_map(project.translation_units.keys()));
+            module.body.insert(module.body.len() - 1, Ast::Body(Body::Raw(Raw(x))));
+        }
         bundle_files.insert(
             format!("{}.ts", module_name.to_lower_camel_case()),
             PathNode::File(format!("{}", module).into_bytes()),
@@ -454,11 +481,32 @@ export type Context = {
   ) => string | null
 }
 
-export function flt(locale: string) {
+function mergeBundle(intoBundle: FluentBundle, fromBundle: FluentBundle) {
+  for (const [k, v] of Object.entries(fromBundle._functions)) {
+    intoBundle._functions[k] = v
+  }
+
+  for (const [k, v] of fromBundle._messages.entries()) {
+    intoBundle._messages.set(k, v)
+  }
+
+  for (const [k, v] of fromBundle._terms.entries()) {
+    intoBundle._terms.set(k, v)
+  }
+}
+
+export function flt(
+  locale: string,
+  coreBundles: Record<string, FluentBundle> = {}
+) {
   return (input: TemplateStringsArray) => {
     const resource = new FluentResource(input.raw[0])
     const bundle = new FluentBundle(locale)
     bundle.addResource(resource)
+    const coreBundle = coreBundles[locale]
+    if (coreBundle != null) {
+      mergeBundle(bundle, coreBundle)
+    }
     return bundle
   }
 }
@@ -494,13 +542,13 @@ export class StringsContext<S> {
         const bundle = bundles[locale]
         if (bundle == null) {
           console.error("Bundle was not found for locale", locale)
-          return id
+          return null
         }
 
         const message = bundle.getMessage(id)
         if (message == null) {
           console.error("Message was not found for locale", locale, id)
-          return id
+          return null
         }
 
         let pattern
@@ -513,7 +561,7 @@ export class StringsContext<S> {
 
         if (pattern == null) {
           console.error("Pattern was not found for locale", locale, id)
-          return id
+          return null
         }
 
         return bundle.formatPattern(pattern, args)
