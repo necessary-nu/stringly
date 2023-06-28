@@ -1,14 +1,12 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     io::{Read, Seek},
     str::FromStr,
 };
 
 use calamine::{Reader, Xlsx};
-use fluent_syntax::parser::ParserError;
 use heck::ToSnakeCase;
 use icu::locid::LanguageIdentifier;
-use reqwest::header;
 use rust_xlsxwriter::{Format, FormatAlign, Workbook, XlsxError};
 
 use crate::{
@@ -51,6 +49,10 @@ where
             eprintln!("[{}] No identifier column found in sheet; skipping", sheet);
             continue;
         };
+        let Some(desc_idx) = headers.1.iter().position(|x| x.as_string().as_deref() == Some("Description")) else {
+            eprintln!("[{}] No description column found in sheet; skipping", sheet);
+            continue;
+        };
 
         // Collect columns with language codes
         let lang_cols = headers
@@ -73,6 +75,8 @@ where
             eprintln!("[{}] No base language found in sheet; skipping", sheet);
             continue;
         };
+
+        let mut descriptions = BTreeMap::new();
 
         let mut languages = BTreeKeyedSet::from_set(
             lang_cols
@@ -101,6 +105,10 @@ where
                 eprintln!("[{}] No base string found at row {}; skipping", &sheet, row_idx);
                 continue;
             };
+
+            if let Some(desc) = row.get(desc_idx).unwrap().as_string() {
+                descriptions.insert(id.clone(), desc);
+            }
 
             for (col_idx, col_code) in lang_cols.iter() {
                 let col_str = match row
@@ -148,7 +156,7 @@ where
 
         categories.insert(Category {
             key: CIdentifier::try_from(sheet.to_snake_case()).unwrap(),
-            descriptions: Default::default(),
+            descriptions,
             name: sheet.to_string(),
             default_locale: base_lang_code.clone(),
             translation_units: languages,

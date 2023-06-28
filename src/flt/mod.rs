@@ -52,7 +52,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         let mut subfiles = BTreeMap::new();
         for m in v.translation_units.values() {
             let lang = m.locale.clone();
-            let x: ast::Resource<String> = match m.try_into() {
+            let x = match m.to_flt_resource(&v.descriptions) {
                 Ok(x) => x,
                 Err(e) => {
                     eprintln!("Error parsing translation unit: {} {}", k, m.locale);
@@ -178,17 +178,23 @@ impl TranslationUnitMap {
 
         tm
     }
-}
 
-impl TryFrom<&TranslationUnitMap> for ast::Resource<String> {
-    type Error = ParserError;
-
-    fn try_from(value: &TranslationUnitMap) -> Result<Self, Self::Error> {
+    pub fn to_flt_resource(
+        &self,
+        descriptions: &BTreeMap<TUIdentifier, String>,
+    ) -> Result<ast::Resource<String>, ParserError> {
         let resources =
-            value
-                .translation_units
+            self.translation_units
                 .iter()
                 .fold(String::new(), |mut input, (key, value)| {
+                    let comment = if let Some(value) = descriptions.get(key) {
+                        Some(ast::Comment {
+                            content: vec![&**value],
+                        })
+                    } else {
+                        None
+                    };
+
                     let message = ast::Message {
                         id: ast::Identifier { name: key.deref() },
                         value: Some(ast::Pattern {
@@ -206,7 +212,7 @@ impl TryFrom<&TranslationUnitMap> for ast::Resource<String> {
                                 },
                             })
                             .collect::<Vec<_>>(),
-                        comment: None,
+                        comment,
                     };
 
                     input.push_str(&serializer::serialize_message(&message));

@@ -256,19 +256,21 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
     let mut bundle_files = BTreeMap::new();
     let mut index_bundles = vec![];
 
-    for (module_name, project) in input.categories.into_iter() {
+    for (module_name, category) in input.categories.into_iter() {
         let is_core = &*module_name == "core";
         let mut flts = Vec::new();
 
-        for (_, m) in project.translation_units.iter() {
+        for (_, m) in category.translation_units.iter() {
             let lang = m.locale.clone();
-            let resource: fluent_syntax::ast::Resource<String> = m.try_into()?;
+            let resource = m.to_flt_resource(&category.descriptions)?;
 
-            flts.push(Ast::Body(Body::Raw(Raw(dump_flt_inline(&lang, &resource, is_core)))));
+            flts.push(Ast::Body(Body::Raw(Raw(dump_flt_inline(
+                &lang, &resource, is_core,
+            )))));
         }
 
-        let strings = project.base_strings();
-        let resource: fluent_syntax::ast::Resource<String> = strings.try_into()?;
+        let strings = category.base_strings();
+        let resource = strings.to_flt_resource(&category.descriptions)?;
 
         let ts_asts = resource
             .body
@@ -359,7 +361,10 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         let bundles = if is_core {
             "#bundles = bundles\n".to_string()
         } else {
-            format!("#bundles = {{\n{}\n}}\n",  dump_flt_resource_map(project.translation_units.keys()))
+            format!(
+                "#bundles = {{\n{}\n}}\n",
+                dump_flt_resource_map(category.translation_units.keys())
+            )
         };
 
         let ts_ast = Class {
@@ -387,9 +392,13 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
 
         // Hack for core
         if is_core {
-            let x = format!("export const bundles = Object.freeze({{ {} }})\n\n", 
-                dump_flt_resource_map(project.translation_units.keys()));
-            module.body.insert(module.body.len() - 1, Ast::Body(Body::Raw(Raw(x))));
+            let x = format!(
+                "export const bundles = Object.freeze({{ {} }})\n\n",
+                dump_flt_resource_map(category.translation_units.keys())
+            );
+            module
+                .body
+                .insert(module.body.len() - 1, Ast::Body(Body::Raw(Raw(x))));
         }
         bundle_files.insert(
             format!("{}.ts", module_name.to_lower_camel_case()),
