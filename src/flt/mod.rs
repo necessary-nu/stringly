@@ -187,28 +187,35 @@ impl TranslationUnitMap {
             self.translation_units
                 .iter()
                 .fold(String::new(), |mut input, (key, value)| {
+                    // eprintln!("{} [{:?}]", key, value);
                     let comment = if let Some(value) = descriptions.get(key) {
                         Some(ast::Comment {
-                            content: vec![&**value],
+                            content: vec![multiline_main(&value)],
                         })
                     } else {
                         None
                     };
 
                     let message = ast::Message {
-                        id: ast::Identifier { name: key.deref() },
+                        id: ast::Identifier {
+                            name: key.deref().to_string(),
+                        },
                         value: Some(ast::Pattern {
                             elements: vec![ast::PatternElement::TextElement {
-                                value: &*value.main,
+                                value: multiline_main(&value.main),
                             }],
                         }),
                         attributes: value
                             .attributes
                             .iter()
                             .map(|(k, v)| ast::Attribute {
-                                id: ast::Identifier { name: k.deref() },
+                                id: ast::Identifier {
+                                    name: k.deref().to_string(),
+                                },
                                 value: ast::Pattern {
-                                    elements: vec![ast::PatternElement::TextElement { value: v }],
+                                    elements: vec![ast::PatternElement::TextElement {
+                                        value: multiline_attr(&v),
+                                    }],
                                 },
                             })
                             .collect::<Vec<_>>(),
@@ -220,6 +227,43 @@ impl TranslationUnitMap {
                     input
                 });
 
-        fluent_syntax::parser::parse(resources).map_err(|(_, mut errors)| errors.remove(0))
+        // eprintln!("[{}]", resources);
+
+        fluent_syntax::parser::parse(resources.clone()).map_err(|(_, mut errors)| {
+            let error = errors.remove(0);
+            // eprintln!(
+            //     "Erro here: {}",
+            //     resources
+            //         .chars()
+            //         .skip(error.pos.start - 40)
+            //         .take(40 + 40)
+            //         .collect::<String>()
+            // );
+            error
+        })
     }
+}
+
+fn multiline_main(value: &str) -> String {
+    format!(
+        "{}\n",
+        escape(value.trim())
+            .split("\n")
+            .collect::<Vec<_>>()
+            .join("\n    ")
+    )
+}
+
+fn multiline_attr(value: &str) -> String {
+    format!(
+        "{}\n",
+        escape(value.trim())
+            .split("\n")
+            .collect::<Vec<_>>()
+            .join("\n        ")
+    )
+}
+
+fn escape(value: &str) -> String {
+    value.replace("*", "{\"*\"}")
 }

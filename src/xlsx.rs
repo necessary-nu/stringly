@@ -45,11 +45,19 @@ where
         let headers = rows.next().unwrap();
 
         // Collect the headers and their index
-        let Some(id_idx) = headers.1.iter().position(|x| x.as_string().as_deref() == Some("Identifier")) else {
+        let Some(id_idx) = headers
+            .1
+            .iter()
+            .position(|x| x.as_string().as_deref() == Some("Identifier"))
+        else {
             eprintln!("[{}] No identifier column found in sheet; skipping", sheet);
             continue;
         };
-        let Some(desc_idx) = headers.1.iter().position(|x| x.as_string().as_deref() == Some("Description")) else {
+        let Some(desc_idx) = headers
+            .1
+            .iter()
+            .position(|x| x.as_string().as_deref() == Some("Description"))
+        else {
             eprintln!("[{}] No description column found in sheet; skipping", sheet);
             continue;
         };
@@ -91,7 +99,10 @@ where
 
         for (row_idx, row) in rows {
             let Some(id) = row.get(id_idx).unwrap().as_string() else {
-                eprintln!("[{}] No identifier found at row {}; skipping", &sheet, row_idx);
+                eprintln!(
+                    "[{}] No identifier found at row {}; skipping",
+                    &sheet, row_idx
+                );
                 continue;
             };
             let mut chunks = id.split("__");
@@ -102,7 +113,10 @@ where
             };
 
             let Some(_base_str) = row.get(*base_lang_idx).unwrap().as_string() else {
-                eprintln!("[{}] No base string found at row {}; skipping", &sheet, row_idx);
+                eprintln!(
+                    "[{}] No base string found at row {}; skipping",
+                    &sheet, row_idx
+                );
                 continue;
             };
 
