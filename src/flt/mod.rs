@@ -231,14 +231,13 @@ impl TranslationUnitMap {
 
         fluent_syntax::parser::parse(resources.clone()).map_err(|(_, mut errors)| {
             let error = errors.remove(0);
-            // eprintln!(
-            //     "Erro here: {}",
-            //     resources
-            //         .chars()
-            //         .skip(error.pos.start - 40)
-            //         .take(40 + 40)
-            //         .collect::<String>()
-            // );
+
+            // let chonk = resources
+            //     .chars()
+            //     .skip(error.pos.start - 10)
+            //     .take(20)
+            //     .collect::<String>();
+            // eprintln!("Erro here: [{chonk}]",);
             error
         })
     }
@@ -265,5 +264,10 @@ fn multiline_attr(value: &str) -> String {
 }
 
 fn escape(value: &str) -> String {
-    value.replace("*", "{\"*\"}")
+    value
+        .replace("*", "{\"*\"}")
+        .replace("\\(", "{\"(\"}")
+        .replace("\\)", "{\")\"}")
+        .replace("\\{", "{\"{\"}")
+        .replace("\\}", "{\"}\"}")
 }
