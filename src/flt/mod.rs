@@ -32,6 +32,11 @@ struct CategoryConfig {
     default_locale: LanguageIdentifier,
 }
 
+pub fn parse_flt(path: &Path) -> fluent_syntax::parser::Result<String> {
+    let flt_str = std::fs::read_to_string(path).unwrap();
+    fluent_syntax::parser::parse(flt_str)
+}
+
 pub fn generate(input: Project) -> Result<PathNode, ParserError> {
     let mut files = BTreeMap::new();
 
@@ -111,8 +116,7 @@ pub fn load_project_from_path(path: &Path) -> anyhow::Result<Project> {
         for flt_path in iter {
             let locale_str = flt_path.file_stem().and_then(|x| x.to_str()).unwrap();
             let locale = LanguageIdentifier::from_str(locale_str).unwrap();
-            let flt_str = std::fs::read_to_string(flt_path)?;
-            let flt: ast::Resource<String> = fluent_syntax::parser::parse(flt_str).unwrap();
+            let flt: ast::Resource<String> = parse_flt(&flt_path).unwrap();
             category
                 .translation_units
                 .insert(TranslationUnitMap::from_flt_resource(locale, &flt));

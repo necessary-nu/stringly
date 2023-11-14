@@ -1,5 +1,6 @@
 use std::{
     fmt::Display,
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
@@ -12,6 +13,30 @@ use stringly::{flt::load_project_from_path, ir::Project, translate};
 enum FromFormat {
     Fluent,
     Xlsx,
+}
+
+impl FromFormat {
+    pub fn file_ext(&self) -> &str {
+        match self {
+            FromFormat::Fluent => "flt",
+            FromFormat::Xlsx => "xlsx",
+        }
+    }
+
+    pub fn validate(&self, path: &Path) -> anyhow::Result<()> {
+        match self {
+            FromFormat::Fluent => match stringly::flt::parse_flt(path) {
+                Ok(_) => {}
+                Err((_, errs)) => match errs.into_iter().next() {
+                    Some(v) => return Err(v.into()),
+                    None => return Err(anyhow::anyhow!("Unknown error")).into(),
+                },
+            },
+            FromFormat::Xlsx => todo!(),
+        }
+
+        Ok(())
+    }
 }
 
 impl Display for FromFormat {
@@ -77,6 +102,21 @@ struct Args {
 enum Command {
     Generate(GenerateArgs),
     Translate(TranslateArgs),
+    Validate(ValidateArgs),
+}
+
+#[derive(Debug, Parser)]
+struct ValidateArgs {
+    #[arg(short, long)]
+    /// Path to the input format path
+    input_path: PathBuf,
+
+    #[arg(short, long)]
+    from_format: FromFormat,
+
+    #[arg(short, long)]
+    /// Validate files recursively
+    recursive: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -191,6 +231,32 @@ async fn run() -> anyhow::Result<()> {
                 translate::process(&project, &args.target_language, &args.google_api_key).await?;
             eprintln!("Generating for format: {}", args.to_format);
             generate(args.to_format, project, &args.output_path)?;
+            Ok(())
+        }
+        Command::Validate(args) => {
+            if args.recursive {
+                let wd = walkdir::WalkDir::new(&args.input_path);
+                let files = wd
+                    .into_iter()
+                    .filter_map(Result::ok)
+                    .filter(|x| x.metadata().map(|x| x.is_file()).unwrap_or(false))
+                    .filter(|x| {
+                        x.path()
+                            .extension()
+                            .map(|x| x.as_bytes())
+                            .map(|ext| ext == args.from_format.file_ext().as_bytes())
+                            .unwrap_or(false)
+                    });
+
+                for f in files {
+                    eprintln!("Validating: {}", f.path().display());
+                    args.from_format.validate(f.path())?;
+                }
+            } else {
+                eprintln!("Validating: {}", args.input_path.display());
+                args.from_format.validate(&args.input_path)?;
+            }
+
             Ok(())
         }
     }
