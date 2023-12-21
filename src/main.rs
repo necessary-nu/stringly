@@ -7,7 +7,7 @@ use std::{
 use calamine::Xlsx;
 use clap::{builder::PossibleValue, Parser, ValueEnum};
 use icu::locid::LanguageIdentifier;
-use stringly::{flt::load_project_from_path, ir::Project, translate};
+use stringly::{ftl::load_project_from_path, ir::Project, translate};
 
 #[derive(Debug, Clone, Copy)]
 enum FromFormat {
@@ -18,14 +18,14 @@ enum FromFormat {
 impl FromFormat {
     pub fn file_ext(&self) -> &str {
         match self {
-            FromFormat::Fluent => "flt",
+            FromFormat::Fluent => "ftl",
             FromFormat::Xlsx => "xlsx",
         }
     }
 
     pub fn validate(&self, path: &Path) -> anyhow::Result<()> {
         match self {
-            FromFormat::Fluent => match stringly::flt::parse_flt(path) {
+            FromFormat::Fluent => match stringly::ftl::parse_ftl(path) {
                 Ok(_) => {}
                 Err((_, errs)) => match errs.into_iter().next() {
                     Some(v) => return Err(v.into()),
@@ -56,7 +56,7 @@ impl ValueEnum for FromFormat {
     fn to_possible_value(&self) -> Option<PossibleValue> {
         match self {
             Self::Xlsx => Some(PossibleValue::new("xlsx")),
-            Self::Fluent => Some(PossibleValue::new("fluent").alias("flt")),
+            Self::Fluent => Some(PossibleValue::new("fluent").alias("ftl")),
         }
     }
 }
@@ -86,7 +86,7 @@ impl ValueEnum for Target {
     fn to_possible_value(&self) -> Option<PossibleValue> {
         match self {
             Target::TypeScript => Some(PossibleValue::new("typescript").alias("ts")),
-            Target::Fluent => Some(PossibleValue::new("fluent").alias("flt")),
+            Target::Fluent => Some(PossibleValue::new("fluent").alias("ftl")),
             Target::Xlsx => Some(PossibleValue::new("xlsx")),
         }
     }
@@ -180,7 +180,7 @@ fn load_project(from_format: FromFormat, input_path: &Path) -> anyhow::Result<Pr
 
 fn generate(to_format: Target, project: Project, output_path: &Path) -> anyhow::Result<()> {
     let tree = match to_format {
-        Target::Fluent => match stringly::flt::generate(project) {
+        Target::Fluent => match stringly::ftl::generate(project) {
             Ok(v) => v,
             Err(error) => {
                 eprintln!("{:?}", error);

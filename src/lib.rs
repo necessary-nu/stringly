@@ -5,7 +5,7 @@ use std::{
     path::Path,
 };
 
-pub mod flt;
+pub mod ftl;
 pub mod ir;
 pub mod translate;
 pub mod ts;

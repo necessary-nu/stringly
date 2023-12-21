@@ -219,27 +219,27 @@ impl Display for Ast {
     }
 }
 
-fn dump_flt_inline(
+fn dump_ftl_inline(
     lang: &LanguageIdentifier,
     res: &fluent_syntax::ast::Resource<String>,
     is_core: bool,
 ) -> String {
     if is_core {
         format!(
-            "const {} = flt(\"{lang}\")`\n{}`\n",
+            "const {} = ftl(\"{lang}\")`\n{}`\n",
             lang.to_string().to_shouty_snake_case(),
             fluent_syntax::serializer::serialize(res)
         )
     } else {
         format!(
-            "const {} = flt(\"{lang}\", coreBundles)`\n{}`\n",
+            "const {} = ftl(\"{lang}\", coreBundles)`\n{}`\n",
             lang.to_string().to_shouty_snake_case(),
             fluent_syntax::serializer::serialize(res)
         )
     }
 }
 
-fn dump_flt_resource_map<'a>(langs: impl Iterator<Item = &'a LanguageIdentifier>) -> String {
+fn dump_ftl_resource_map<'a>(langs: impl Iterator<Item = &'a LanguageIdentifier>) -> String {
     langs
         .map(|x| {
             format!(
@@ -258,19 +258,19 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
 
     for (module_name, category) in input.categories.into_iter() {
         let is_core = &*module_name == "core";
-        let mut flts = Vec::new();
+        let mut ftls = Vec::new();
 
         for (_, m) in category.translation_units.iter() {
             let lang = m.locale.clone();
-            let resource = m.to_flt_resource(&category.descriptions)?;
+            let resource = m.to_ftl_resource(&category.descriptions)?;
 
-            flts.push(Ast::Body(Body::Raw(Raw(dump_flt_inline(
+            ftls.push(Ast::Body(Body::Raw(Raw(dump_ftl_inline(
                 &lang, &resource, is_core,
             )))));
         }
 
         let strings = category.base_strings();
-        let resource = strings.to_flt_resource(&category.descriptions)?;
+        let resource = strings.to_ftl_resource(&category.descriptions)?;
 
         let ts_asts = resource
             .body
@@ -356,14 +356,14 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         } else {
             "import { bundles as coreBundles } from \"./core\"\n"
         };
-        let header: &str = "import { Context, flt } from \"../util\"\n\n";
+        let header: &str = "import { Context, ftl } from \"../util\"\n\n";
 
         let bundles = if is_core {
             "#bundles = bundles\n".to_string()
         } else {
             format!(
                 "#bundles = {{\n{}\n}}\n",
-                dump_flt_resource_map(category.translation_units.keys())
+                dump_ftl_resource_map(category.translation_units.keys())
             )
         };
 
@@ -385,7 +385,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         let mut module = Module {
             body: [Ast::Body(Body::Raw(Raw(format!("{core_import}{header}"))))]
                 .into_iter()
-                .chain(flts.into_iter())
+                .chain(ftls.into_iter())
                 .chain(std::iter::once(Ast::Class(ts_ast)))
                 .collect(),
         };
@@ -394,7 +394,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         if is_core {
             let x = format!(
                 "export const bundles = Object.freeze({{ {} }})\n\n",
-                dump_flt_resource_map(category.translation_units.keys())
+                dump_ftl_resource_map(category.translation_units.keys())
             );
             module
                 .body
@@ -504,7 +504,7 @@ function mergeBundle(intoBundle: FluentBundle, fromBundle: FluentBundle) {
   }
 }
 
-export function flt(
+export function ftl(
   locale: string,
   coreBundles: Record<string, FluentBundle> = {}
 ) {

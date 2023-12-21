@@ -32,9 +32,9 @@ struct CategoryConfig {
     default_locale: LanguageIdentifier,
 }
 
-pub fn parse_flt(path: &Path) -> fluent_syntax::parser::Result<String> {
-    let flt_str = std::fs::read_to_string(path).unwrap();
-    fluent_syntax::parser::parse(flt_str)
+pub fn parse_ftl(path: &Path) -> fluent_syntax::parser::Result<String> {
+    let ftl_str = std::fs::read_to_string(path).unwrap();
+    fluent_syntax::parser::parse(ftl_str)
 }
 
 pub fn generate(input: Project) -> Result<PathNode, ParserError> {
@@ -57,7 +57,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
         let mut subfiles = BTreeMap::new();
         for m in v.translation_units.values() {
             let lang = m.locale.clone();
-            let x = match m.to_flt_resource(&v.descriptions) {
+            let x = match m.to_ftl_resource(&v.descriptions) {
                 Ok(x) => x,
                 Err(e) => {
                     eprintln!("Error parsing translation unit: {} {}", k, m.locale);
@@ -66,7 +66,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
                 }
             };
             subfiles.insert(
-                format!("{lang}.flt"),
+                format!("{lang}.ftl"),
                 PathNode::File(fluent_syntax::serializer::serialize(&x).into_bytes()),
             );
         }
@@ -108,18 +108,18 @@ pub fn load_project_from_path(path: &Path) -> anyhow::Result<Project> {
             .filter(|x| {
                 x.path()
                     .extension()
-                    .filter(|x| x.to_str().unwrap_or_default() == "flt")
+                    .filter(|x| x.to_str().unwrap_or_default() == "ftl")
                     .is_some()
             })
             .map(|x| x.path());
 
-        for flt_path in iter {
-            let locale_str = flt_path.file_stem().and_then(|x| x.to_str()).unwrap();
+        for ftl_path in iter {
+            let locale_str = ftl_path.file_stem().and_then(|x| x.to_str()).unwrap();
             let locale = LanguageIdentifier::from_str(locale_str).unwrap();
-            let flt: ast::Resource<String> = parse_flt(&flt_path).unwrap();
+            let ftl: ast::Resource<String> = parse_ftl(&ftl_path).unwrap();
             category
                 .translation_units
-                .insert(TranslationUnitMap::from_flt_resource(locale, &flt));
+                .insert(TranslationUnitMap::from_ftl_resource(locale, &ftl));
         }
 
         project.categories.insert(category);
@@ -129,7 +129,7 @@ pub fn load_project_from_path(path: &Path) -> anyhow::Result<Project> {
 }
 
 impl TranslationUnitMap {
-    pub fn from_flt_resource(
+    pub fn from_ftl_resource(
         default_locale: LanguageIdentifier,
         value: &ast::Resource<String>,
     ) -> Self {
@@ -183,7 +183,7 @@ impl TranslationUnitMap {
         tm
     }
 
-    pub fn to_flt_resource(
+    pub fn to_ftl_resource(
         &self,
         descriptions: &BTreeMap<TUIdentifier, String>,
     ) -> Result<ast::Resource<String>, ParserError> {
