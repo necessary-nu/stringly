@@ -66,7 +66,7 @@ pub fn generate(input: Project) -> Result<PathNode, ParserError> {
                 }
             };
             subfiles.insert(
-                format!("{lang}.ftl"),
+                format!("{lang}.flt"),
                 PathNode::File(fluent_syntax::serializer::serialize(&x).into_bytes()),
             );
         }
@@ -108,7 +108,7 @@ pub fn load_project_from_path(path: &Path) -> anyhow::Result<Project> {
             .filter(|x| {
                 x.path()
                     .extension()
-                    .filter(|x| x.to_str().unwrap_or_default() == "ftl")
+                    .filter(|x| x.to_str().unwrap_or_default() == "flt")
                     .is_some()
             })
             .map(|x| x.path());
