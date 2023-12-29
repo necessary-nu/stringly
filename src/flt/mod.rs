@@ -108,7 +108,7 @@ pub fn load_project_from_path(path: &Path) -> anyhow::Result<Project> {
             .filter(|x| {
                 x.path()
                     .extension()
-                    .filter(|x| x.to_str().unwrap_or_default() == "flt")
+                    .filter(|x| x.to_str().unwrap_or_default() == "ftl")
                     .is_some()
             })
             .map(|x| x.path());

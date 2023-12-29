@@ -18,7 +18,7 @@ enum FromFormat {
 impl FromFormat {
     pub fn file_ext(&self) -> &str {
         match self {
-            FromFormat::Fluent => "flt",
+            FromFormat::Fluent => "ftl",
             FromFormat::Xlsx => "xlsx",
         }
     }
@@ -56,7 +56,7 @@ impl ValueEnum for FromFormat {
     fn to_possible_value(&self) -> Option<PossibleValue> {
         match self {
             Self::Xlsx => Some(PossibleValue::new("xlsx")),
-            Self::Fluent => Some(PossibleValue::new("fluent").alias("flt")),
+            Self::Fluent => Some(PossibleValue::new("fluent").alias("ftl").alias("flt")),
         }
     }
 }
@@ -86,7 +86,7 @@ impl ValueEnum for Target {
     fn to_possible_value(&self) -> Option<PossibleValue> {
         match self {
             Target::TypeScript => Some(PossibleValue::new("typescript").alias("ts")),
-            Target::Fluent => Some(PossibleValue::new("fluent").alias("flt")),
+            Target::Fluent => Some(PossibleValue::new("fluent").alias("ftl").alias("flt")),
             Target::Xlsx => Some(PossibleValue::new("xlsx")),
         }
     }
