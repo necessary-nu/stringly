@@ -18,7 +18,7 @@ enum FromFormat {
 impl FromFormat {
     pub fn file_ext(&self) -> &str {
         match self {
-            FromFormat::Fluent => "flt",
+            FromFormat::Fluent => "ftl",
             FromFormat::Xlsx => "xlsx",
         }
     }
@@ -66,6 +66,7 @@ enum Target {
     Fluent,
     TypeScript,
     Xlsx,
+    Rust,
 }
 
 impl Display for Target {
@@ -74,6 +75,7 @@ impl Display for Target {
             Target::Fluent => "Fluent",
             Target::TypeScript => "TypeScript",
             Target::Xlsx => "XLSX",
+            Target::Rust => "Rust",
         })
     }
 }
@@ -86,8 +88,9 @@ impl ValueEnum for Target {
     fn to_possible_value(&self) -> Option<PossibleValue> {
         match self {
             Target::TypeScript => Some(PossibleValue::new("typescript").alias("ts")),
-            Target::Fluent => Some(PossibleValue::new("fluent").alias("flt")),
+            Target::Fluent => Some(PossibleValue::new("fluent").alias("ftl").alias("flt")),
             Target::Xlsx => Some(PossibleValue::new("xlsx")),
+            Target::Rust => Some(PossibleValue::new("rust").alias("rs")),
         }
     }
 }
@@ -195,6 +198,13 @@ fn generate(to_format: Target, project: Project, output_path: &Path) -> anyhow::
             }
         },
         Target::Xlsx => match stringly::xlsx::generate(project) {
+            Ok(v) => v,
+            Err(error) => {
+                eprintln!("{:?}", error);
+                return Err(error.into());
+            }
+        },
+        Target::Rust => match stringly::rust::generate(project) {
             Ok(v) => v,
             Err(error) => {
                 eprintln!("{:?}", error);

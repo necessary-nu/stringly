@@ -7,6 +7,7 @@ use std::{
 
 pub mod flt;
 pub mod ir;
+pub mod rust;
 pub mod translate;
 pub mod ts;
 pub mod xlsx;
